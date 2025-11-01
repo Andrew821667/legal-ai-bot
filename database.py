@@ -1,0 +1,438 @@
+"""
+Работа с SQLite базой данных
+"""
+import sqlite3
+import logging
+from datetime import datetime
+from typing import Optional, List, Dict, Tuple
+import config
+
+logger = logging.getLogger(__name__)
+
+
+class Database:
+    """Класс для работы с SQLite базой данных"""
+
+    def __init__(self, db_path: str = None):
+        self.db_path = db_path or config.DATABASE_PATH
+        self.init_database()
+
+    def get_connection(self) -> sqlite3.Connection:
+        """Получение подключения к БД"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row  # Доступ к колонкам по имени
+        return conn
+
+    def init_database(self):
+        """Инициализация базы данных и создание таблиц"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Таблица users
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_id INTEGER UNIQUE NOT NULL,
+                    username TEXT,
+                    first_name TEXT,
+                    last_name TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_interaction TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)")
+
+            # Таблица conversations
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    role TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversations_timestamp ON conversations(timestamp)")
+
+            # Таблица leads
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS leads (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+
+                    name TEXT,
+                    email TEXT,
+                    phone TEXT,
+                    company TEXT,
+
+                    team_size TEXT,
+                    contracts_per_month TEXT,
+                    pain_point TEXT,
+                    budget TEXT,
+                    urgency TEXT,
+                    industry TEXT,
+
+                    temperature TEXT DEFAULT 'cold',
+                    status TEXT DEFAULT 'new',
+                    notes TEXT,
+
+                    lead_magnet_type TEXT,
+                    lead_magnet_delivered BOOLEAN DEFAULT 0,
+
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leads_user_id ON leads(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leads_temperature ON leads(temperature)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leads_created_at ON leads(created_at)")
+
+            # Таблица admin_notifications
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS admin_notifications (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    lead_id INTEGER NOT NULL,
+                    notification_type TEXT NOT NULL,
+                    message TEXT,
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    read_at TIMESTAMP,
+                    FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
+                )
+            """)
+
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_lead_id ON admin_notifications(lead_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_sent_at ON admin_notifications(sent_at)")
+
+            conn.commit()
+            logger.info("Database initialized successfully")
+
+        except Exception as e:
+            logger.error(f"Error initializing database: {e}")
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    # === USERS ===
+
+    def create_or_update_user(self, telegram_id: int, username: str = None,
+                              first_name: str = None, last_name: str = None) -> int:
+        """Создание или обновление пользователя"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                INSERT INTO users (telegram_id, username, first_name, last_name)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(telegram_id) DO UPDATE SET
+                    username = excluded.username,
+                    first_name = excluded.first_name,
+                    last_name = excluded.last_name,
+                    last_interaction = CURRENT_TIMESTAMP
+            """, (telegram_id, username, first_name, last_name))
+
+            conn.commit()
+
+            cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (telegram_id,))
+            user_id = cursor.fetchone()[0]
+
+            logger.info(f"User {telegram_id} created/updated with id {user_id}")
+            return user_id
+
+        except Exception as e:
+            logger.error(f"Error creating/updating user: {e}")
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def get_user_by_telegram_id(self, telegram_id: int) -> Optional[Dict]:
+        """Получение пользователя по telegram_id"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+            row = cursor.fetchone()
+
+            if row:
+                return dict(row)
+            return None
+
+        finally:
+            conn.close()
+
+    # === CONVERSATIONS ===
+
+    def add_message(self, user_id: int, role: str, message: str):
+        """Добавление сообщения в историю диалога"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                INSERT INTO conversations (user_id, role, message)
+                VALUES (?, ?, ?)
+            """, (user_id, role, message))
+
+            conn.commit()
+            logger.debug(f"Message added for user {user_id}, role {role}")
+
+        except Exception as e:
+            logger.error(f"Error adding message: {e}")
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def get_conversation_history(self, user_id: int, limit: int = None) -> List[Dict]:
+        """Получение истории диалога"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            limit = limit or config.MAX_HISTORY_MESSAGES
+
+            cursor.execute("""
+                SELECT role, message, timestamp
+                FROM conversations
+                WHERE user_id = ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """, (user_id, limit))
+
+            rows = cursor.fetchall()
+            # Возвращаем в обратном порядке (от старых к новым)
+            return [dict(row) for row in reversed(rows)]
+
+        finally:
+            conn.close()
+
+    def clear_conversation_history(self, user_id: int):
+        """Очистка истории диалога"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("DELETE FROM conversations WHERE user_id = ?", (user_id,))
+            conn.commit()
+            logger.info(f"Conversation history cleared for user {user_id}")
+
+        except Exception as e:
+            logger.error(f"Error clearing conversation: {e}")
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    # === LEADS ===
+
+    def create_or_update_lead(self, user_id: int, lead_data: Dict) -> int:
+        """Создание или обновление лида"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Проверяем существует ли уже лид для этого пользователя
+            cursor.execute("SELECT id FROM leads WHERE user_id = ?", (user_id,))
+            existing = cursor.fetchone()
+
+            if existing:
+                # Обновляем существующий лид
+                lead_id = existing[0]
+
+                update_fields = []
+                values = []
+
+                for key, value in lead_data.items():
+                    if value is not None:
+                        update_fields.append(f"{key} = ?")
+                        values.append(value)
+
+                if update_fields:
+                    values.append(lead_id)
+                    query = f"UPDATE leads SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+                    cursor.execute(query, values)
+
+                logger.info(f"Lead {lead_id} updated for user {user_id}")
+
+            else:
+                # Создаем новый лид
+                fields = ['user_id'] + list(lead_data.keys())
+                placeholders = ['?'] * len(fields)
+                values = [user_id] + list(lead_data.values())
+
+                query = f"INSERT INTO leads ({', '.join(fields)}) VALUES ({', '.join(placeholders)})"
+                cursor.execute(query, values)
+
+                lead_id = cursor.lastrowid
+                logger.info(f"Lead {lead_id} created for user {user_id}")
+
+            conn.commit()
+            return lead_id
+
+        except Exception as e:
+            logger.error(f"Error creating/updating lead: {e}")
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def get_lead_by_user_id(self, user_id: int) -> Optional[Dict]:
+        """Получение лида по user_id"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT * FROM leads WHERE user_id = ?", (user_id,))
+            row = cursor.fetchone()
+
+            if row:
+                return dict(row)
+            return None
+
+        finally:
+            conn.close()
+
+    def get_all_leads(self, temperature: str = None, status: str = None,
+                      limit: int = 100) -> List[Dict]:
+        """Получение всех лидов с фильтрами"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            query = "SELECT * FROM leads WHERE 1=1"
+            params = []
+
+            if temperature:
+                query += " AND temperature = ?"
+                params.append(temperature)
+
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+            return [dict(row) for row in rows]
+
+        finally:
+            conn.close()
+
+    # === ADMIN NOTIFICATIONS ===
+
+    def create_notification(self, lead_id: int, notification_type: str,
+                            message: str) -> int:
+        """Создание уведомления для админа"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                INSERT INTO admin_notifications (lead_id, notification_type, message)
+                VALUES (?, ?, ?)
+            """, (lead_id, notification_type, message))
+
+            conn.commit()
+            notification_id = cursor.lastrowid
+
+            logger.info(f"Notification {notification_id} created for lead {lead_id}")
+            return notification_id
+
+        except Exception as e:
+            logger.error(f"Error creating notification: {e}")
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    # === STATISTICS ===
+
+    def get_statistics(self, days: int = 30) -> Dict:
+        """Получение статистики"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            stats = {}
+
+            # Общее количество пользователей
+            cursor.execute("SELECT COUNT(*) FROM users")
+            stats['total_users'] = cursor.fetchone()[0]
+
+            # Новые пользователи за период
+            cursor.execute("""
+                SELECT COUNT(*) FROM users
+                WHERE created_at >= datetime('now', '-' || ? || ' days')
+            """, (days,))
+            stats['new_users'] = cursor.fetchone()[0]
+
+            # Общее количество лидов
+            cursor.execute("SELECT COUNT(*) FROM leads")
+            stats['total_leads'] = cursor.fetchone()[0]
+
+            # Лиды по температуре
+            for temp in ['hot', 'warm', 'cold']:
+                cursor.execute("SELECT COUNT(*) FROM leads WHERE temperature = ?", (temp,))
+                stats[f'{temp}_leads'] = cursor.fetchone()[0]
+
+            # Общее количество сообщений
+            cursor.execute("SELECT COUNT(*) FROM conversations")
+            stats['total_messages'] = cursor.fetchone()[0]
+
+            # Средняя длина диалога
+            cursor.execute("""
+                SELECT AVG(msg_count)
+                FROM (
+                    SELECT user_id, COUNT(*) as msg_count
+                    FROM conversations
+                    GROUP BY user_id
+                )
+            """)
+            result = cursor.fetchone()[0]
+            stats['avg_conversation_length'] = round(result, 1) if result else 0
+
+            # Lead Magnets
+            cursor.execute("SELECT COUNT(*) FROM leads WHERE lead_magnet_type = 'consultation'")
+            stats['consultations'] = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM leads WHERE lead_magnet_type = 'checklist'")
+            stats['checklists'] = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM leads WHERE lead_magnet_type = 'demo_analysis'")
+            stats['demos'] = cursor.fetchone()[0]
+
+            return stats
+
+        finally:
+            conn.close()
+
+
+# Создание глобального экземпляра базы данных
+db = Database()
+
+
+if __name__ == '__main__':
+    # Инициализация логирования
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+    print("Initializing database...")
+    db = Database()
+    print("Database initialized successfully!")
