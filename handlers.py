@@ -168,8 +168,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lead_id = lead_qualifier.lead_qualifier.process_lead_data(user_data['id'], lead_data)
 
             if lead_id:
-                # Проверяем нужно ли предложить lead magnet
-                if ai_brain.ai_brain.should_offer_lead_magnet(lead_data):
+                # Проверяем был ли уже предложен lead magnet
+                existing_lead = database.db.get_lead_by_user_id(user_data['id'])
+                lead_magnet_already_offered = existing_lead and existing_lead.get('lead_magnet_type') is not None
+
+                # Проверяем нужно ли предложить lead magnet (ТОЛЬКО ОДИН РАЗ!)
+                if not lead_magnet_already_offered and ai_brain.ai_brain.should_offer_lead_magnet(lead_data):
                     await offer_lead_magnet(update, context)
 
                 # Проверяем нужно ли уведомить админа
