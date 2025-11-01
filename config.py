@@ -28,6 +28,14 @@ LOG_FILE = os.getenv('LOG_FILE', 'logs/bot.log')
 MAX_HISTORY_MESSAGES = int(os.getenv('MAX_HISTORY_MESSAGES', 15))
 RESPONSE_DELAY = int(os.getenv('RESPONSE_DELAY', 1))
 
+# Email настройки (SMTP)
+SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+SMTP_PORT = int(os.getenv('SMTP_PORT', 587))
+SMTP_USER = os.getenv('SMTP_USER', '')
+SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', '')
+FROM_EMAIL = os.getenv('FROM_EMAIL', 'a.popov.gv@gmail.com')
+FROM_NAME = os.getenv('FROM_NAME', 'Андрей Попов - Legal AI')
+
 # Проверка обязательных переменных
 if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не установлен в .env файле")

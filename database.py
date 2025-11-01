@@ -304,6 +304,22 @@ class Database:
         finally:
             conn.close()
 
+    def get_lead_by_id(self, lead_id: int) -> Optional[Dict]:
+        """Получение лида по lead_id"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT * FROM leads WHERE id = ?", (lead_id,))
+            row = cursor.fetchone()
+
+            if row:
+                return dict(row)
+            return None
+
+        finally:
+            conn.close()
+
     def get_all_leads(self, temperature: str = None, status: str = None,
                       limit: int = 100) -> List[Dict]:
         """Получение всех лидов с фильтрами"""

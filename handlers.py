@@ -3,6 +3,7 @@ Telegram handlers - обработчики команд и сообщений
 """
 import logging
 import time
+import re
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import database
@@ -11,6 +12,7 @@ import lead_qualifier
 import admin_interface
 import config
 import utils
+import email_sender
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,81 @@ LEAD_MAGNET_MENU = [
     [InlineKeyboardButton("📄 Чек-лист по договорам", callback_data="magnet_checklist")],
     [InlineKeyboardButton("🎯 Демо-анализ договора", callback_data="magnet_demo")]
 ]
+
+
+# === HELPER FUNCTIONS ===
+
+def extract_email(text: str) -> str:
+    """Извлекает email из текста"""
+    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+    match = re.search(email_pattern, text)
+    return match.group(0) if match else None
+
+
+async def send_lead_magnet_email(update: Update, user_data: dict, lead: dict, email: str):
+    """Отправляет email с lead magnet"""
+    try:
+        magnet_type = lead.get('lead_magnet_type')
+        user_name = lead.get('name') or user_data.get('first_name')
+
+        # Показываем индикатор печатания
+        await update.message.chat.send_action(action="typing")
+
+        # Отправляем email в зависимости от типа
+        success = False
+        if magnet_type == 'consultation':
+            success = email_sender.email_sender.send_consultation_confirmation(email, user_name)
+        elif magnet_type == 'checklist':
+            success = email_sender.email_sender.send_checklist(email, user_name)
+        elif magnet_type == 'demo':
+            success = email_sender.email_sender.send_demo_request_confirmation(email, user_name)
+
+        if success:
+            # Обновляем email в lead если его там нет
+            if not lead.get('email'):
+                database.db.create_or_update_lead(user_data['id'], {'email': email})
+
+            # Отмечаем lead magnet как доставленный
+            lead_qualifier.lead_qualifier.mark_lead_magnet_delivered(lead['id'])
+
+            # Подтверждение пользователю
+            messages = {
+                'consultation': (
+                    f"✅ Отлично! Подтверждение консультации отправлено на {email}\n\n"
+                    "Андрей свяжется с вами в ближайшее время для согласования времени.\n\n"
+                    "Если есть еще вопросы - спрашивайте, я на связи!"
+                ),
+                'checklist': (
+                    f"✅ Отлично! Чек-лист отправлен на {email}\n\n"
+                    "Проверьте почту (иногда письма попадают в спам).\n\n"
+                    "Если хотите обсудить автоматизацию - готов ответить на вопросы!"
+                ),
+                'demo': (
+                    f"✅ Отлично! Инструкции отправлены на {email}\n\n"
+                    "Теперь вы можете отправить мне ваш договор для демо-анализа, или связаться с Андреем напрямую:\n"
+                    "📱 Telegram: @AndrewPopov821667\n"
+                    "📧 Email: a.popov.gv@gmail.com"
+                )
+            }
+
+            await update.message.reply_text(messages.get(magnet_type, "✅ Спасибо! Письмо отправлено."))
+            logger.info(f"Lead magnet {magnet_type} sent to {email}")
+        else:
+            # Ошибка отправки
+            await update.message.reply_text(
+                "Произошла ошибка при отправке email. Пожалуйста, свяжитесь с Андреем напрямую:\n\n"
+                "📧 a.popov.gv@gmail.com\n"
+                "📱 @AndrewPopov821667\n"
+                "📞 +7 (909) 233-09-09"
+            )
+            logger.error(f"Failed to send lead magnet {magnet_type} to {email}")
+
+    except Exception as e:
+        logger.error(f"Error in send_lead_magnet_email: {e}")
+        await update.message.reply_text(
+            "Произошла ошибка. Пожалуйста, свяжитесь с Андреем напрямую:\n"
+            "📧 a.popov.gv@gmail.com"
+        )
 
 
 # === USER HANDLERS ===
@@ -124,6 +201,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 last_name=user.last_name
             )
             user_data = database.db.get_user_by_telegram_id(user.id)
+
+        # Проверяем есть ли pending lead magnet и email в сообщении
+        lead = database.db.get_lead_by_user_id(user_data['id'])
+        if lead and lead.get('lead_magnet_type') and not lead.get('lead_magnet_delivered'):
+            email = extract_email(message_text)
+            if email:
+                await send_lead_magnet_email(update, user_data, lead, email)
+                return
 
         # Обработка кнопок меню
         if message_text in ["📋 Услуги", "💰 Цены", "📞 Консультация", "❓ Помощь"]:

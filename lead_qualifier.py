@@ -95,7 +95,7 @@ class LeadQualifier:
             magnet_type: Тип lead magnet (consultation, checklist, demo_analysis)
         """
         try:
-            lead = self.db.get_lead_by_user_id(lead_id)
+            lead = self.db.get_lead_by_id(lead_id)
             if lead:
                 self.db.create_or_update_lead(lead['user_id'], {
                     'lead_magnet_type': magnet_type,
@@ -114,7 +114,7 @@ class LeadQualifier:
             lead_id: ID лида
         """
         try:
-            lead = self.db.get_lead_by_user_id(lead_id)
+            lead = self.db.get_lead_by_id(lead_id)
             if lead:
                 self.db.create_or_update_lead(lead['user_id'], {
                     'lead_magnet_delivered': True
