@@ -39,6 +39,53 @@ def extract_email(text: str) -> str:
     return match.group(0) if match else None
 
 
+async def send_message_gradually(update: Update, text: str, chunk_size: int = 50):
+    """
+    Отправляет сообщение постепенно, создавая эффект печатания
+
+    Args:
+        update: Telegram update
+        text: Текст для отправки
+        chunk_size: Размер куска текста (в символах)
+    """
+    # Разбиваем текст на предложения для более естественного вывода
+    import asyncio
+
+    # Отправляем индикатор печатания
+    await update.message.chat.send_action(action="typing")
+
+    # Разбиваем по абзацам
+    paragraphs = text.split('\n\n')
+    full_message = ""
+    sent_message = None
+
+    for i, paragraph in enumerate(paragraphs):
+        if paragraph.strip():
+            # Добавляем текущий абзац
+            if full_message:
+                full_message += "\n\n" + paragraph
+            else:
+                full_message = paragraph
+
+            # Показываем typing перед каждым абзацем
+            await update.message.chat.send_action(action="typing")
+
+            # Задержка зависит от длины абзаца (имитация печатания)
+            delay = min(len(paragraph) / 100, 2)  # макс 2 секунды
+            await asyncio.sleep(delay)
+
+            # Отправляем или обновляем сообщение
+            if sent_message is None:
+                sent_message = await update.message.reply_text(full_message)
+            else:
+                try:
+                    await sent_message.edit_text(full_message)
+                except Exception:
+                    # Если не можем обновить (слишком старое), отправляем новое
+                    sent_message = await update.message.reply_text(paragraph)
+                    full_message = paragraph
+
+
 async def send_lead_magnet_email(update: Update, user_data: dict, lead: dict, email: str):
     """Отправляет email с lead magnet"""
     try:
@@ -227,23 +274,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Сохраняем сообщение пользователя
         database.db.add_message(user_data['id'], 'user', message_text)
 
-        # Показываем индикатор печатания
-        await update.message.chat.send_action(action="typing")
-
         # Получаем историю диалога
         conversation_history = database.db.get_conversation_history(user_data['id'])
 
         # Генерируем ответ через AI
         response = ai_brain.ai_brain.generate_response(conversation_history)
 
-        # Задержка для естественности
-        time.sleep(config.RESPONSE_DELAY)
-
         # Сохраняем ответ ассистента
         database.db.add_message(user_data['id'], 'assistant', response)
 
-        # Отправляем ответ
-        await update.message.reply_text(response)
+        # Отправляем ответ постепенно (как в ChatGPT)
+        await send_message_gradually(update, response)
 
         # Извлекаем данные лида из диалога
         lead_data = ai_brain.ai_brain.extract_lead_data(conversation_history)
