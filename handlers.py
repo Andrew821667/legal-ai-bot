@@ -39,51 +39,74 @@ def extract_email(text: str) -> str:
     return match.group(0) if match else None
 
 
-async def send_message_gradually(update: Update, text: str, chunk_size: int = 50):
+async def send_message_gradually(update: Update, text: str):
     """
-    Отправляет сообщение постепенно, создавая эффект печатания
+    Отправляет сообщение постепенно, создавая эффект печатания как в ChatGPT
 
     Args:
         update: Telegram update
         text: Текст для отправки
-        chunk_size: Размер куска текста (в символах)
     """
-    # Разбиваем текст на предложения для более естественного вывода
     import asyncio
+    import re
 
-    # Отправляем индикатор печатания
+    # Показываем индикатор печатания
     await update.message.chat.send_action(action="typing")
 
-    # Разбиваем по абзацам
-    paragraphs = text.split('\n\n')
+    # Разбиваем текст на предложения (по точкам, вопр/воскл знакам, переносам строк)
+    sentences = re.split(r'([.!?]\s+|\n)', text)
+
     full_message = ""
     sent_message = None
+    last_update_time = 0
 
-    for i, paragraph in enumerate(paragraphs):
-        if paragraph.strip():
-            # Добавляем текущий абзац
-            if full_message:
-                full_message += "\n\n" + paragraph
-            else:
-                full_message = paragraph
+    for i, part in enumerate(sentences):
+        if not part.strip():
+            continue
 
-            # Показываем typing перед каждым абзацем
-            await update.message.chat.send_action(action="typing")
+        # Добавляем часть к сообщению
+        full_message += part
 
-            # Задержка зависит от длины абзаца (имитация печатания)
-            delay = min(len(paragraph) / 100, 2)  # макс 2 секунды
-            await asyncio.sleep(delay)
+        # Показываем typing перед добавлением каждого предложения
+        await update.message.chat.send_action(action="typing")
 
-            # Отправляем или обновляем сообщение
-            if sent_message is None:
+        # Задержка для имитации печатания (0.8-1.2 секунды)
+        # Длиннее для предложений, короче для переносов строк
+        if part.strip() in ['.', '!', '?', '\n']:
+            delay = 0.3
+        else:
+            delay = min(len(part) / 50, 1.5)  # от длины текста, но не больше 1.5 сек
+
+        await asyncio.sleep(delay)
+
+        # Обновляем сообщение каждые несколько частей или когда достаточно текста
+        current_time = i
+        should_update = (current_time - last_update_time >= 2) or (len(full_message) - len(str(sent_message.text if sent_message else "")) > 30)
+
+        if sent_message is None:
+            # Первая отправка - когда накопилось хотя бы немного текста
+            if len(full_message.strip()) > 20:
                 sent_message = await update.message.reply_text(full_message)
-            else:
+                last_update_time = current_time
+        else:
+            # Обновляем существующее сообщение
+            if should_update or i == len(sentences) - 1:  # Обновляем или в конце
                 try:
                     await sent_message.edit_text(full_message)
-                except Exception:
-                    # Если не можем обновить (слишком старое), отправляем новое
-                    sent_message = await update.message.reply_text(paragraph)
-                    full_message = paragraph
+                    last_update_time = current_time
+                except Exception as e:
+                    # Если ошибка редактирования - пропускаем
+                    pass
+
+    # Финальное обновление - убеждаемся что весь текст отправлен
+    if sent_message:
+        try:
+            await sent_message.edit_text(text)
+        except Exception:
+            pass
+    else:
+        # Если вообще не отправили (очень короткий текст)
+        await update.message.reply_text(text)
 
 
 async def send_lead_magnet_email(update: Update, user_data: dict, lead: dict, email: str):
