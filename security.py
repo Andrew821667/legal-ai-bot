@@ -30,6 +30,9 @@ class SecurityManager:
         # Подозрительная активность
         self.suspicious_users = defaultdict(int)
 
+        # Время начала сбора статистики
+        self.stats_start_time = datetime.now()
+
         # Настройки лимитов
         self.RATE_LIMITS = {
             'messages_per_minute': 10,    # Макс 10 сообщений в минуту
@@ -242,6 +245,11 @@ class SecurityManager:
         # Все проверки пройдены!
         return True, None
 
+    def reset_stats_time(self):
+        """Сброс времени начала сбора статистики"""
+        self.stats_start_time = datetime.now()
+        logger.info(f"Stats start time reset to {self.stats_start_time}")
+
     def get_stats(self) -> Dict:
         """Получить статистику безопасности"""
         return {
@@ -251,6 +259,7 @@ class SecurityManager:
             'daily_budget': self.TOTAL_DAILY_BUDGET,
             'budget_remaining': self.TOTAL_DAILY_BUDGET - self.total_tokens_today,
             'budget_percentage': (self.total_tokens_today / self.TOTAL_DAILY_BUDGET * 100),
+            'stats_start_time': self.stats_start_time,
         }
 
 

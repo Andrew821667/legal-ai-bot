@@ -863,8 +863,12 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
             # Статистика безопасности
             stats = security.security_manager.get_stats()
 
+            # Форматируем время начала статистики
+            stats_since = stats['stats_start_time'].strftime("%d.%m.%Y %H:%M")
+
             stats_message = (
                 "🛡️ СТАТИСТИКА БЕЗОПАСНОСТИ\n\n"
+                f"📅 Статистика с: {stats_since}\n\n"
                 f"📊 Токены:\n"
                 f"• Использовано сегодня: {stats['total_tokens_today']:,}\n"
                 f"• Дневной бюджет: {stats['daily_budget']:,}\n"
@@ -1009,8 +1013,10 @@ async def handle_cleanup_callback(update: Update, context: ContextTypes.DEFAULT_
             security.security_manager.suspicious_users.clear()
             security.security_manager.blacklist.clear()
             security.security_manager.total_tokens_today = 0
+            security.security_manager.reset_stats_time()
 
-            await query.message.reply_text("✅ Счетчики безопасности сброшены")
+            new_time = security.security_manager.stats_start_time.strftime("%d.%m.%Y %H:%M")
+            await query.message.reply_text(f"✅ Счетчики безопасности сброшены\n📅 Статистика теперь с: {new_time}")
             logger.info(f"Admin {user.id} reset security counters")
 
         elif action == "cleanup_all":
