@@ -359,15 +359,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sent_message = None
         chunk_buffer = ""
         last_update_length = 0
+        last_typing_time = 0  # Для контроля частоты send_action
 
         # Получаем поток ответа напрямую от OpenAI
         async for chunk in ai_brain.ai_brain.generate_response_stream(conversation_history):
             full_response += chunk
             chunk_buffer += chunk
 
-            # Показываем typing периодически
-            if len(chunk_buffer) > 50:
-                await update.message.chat.send_action(action="typing")
+            # Показываем typing НЕ ЧАЩЕ чем раз в 5 секунд (Telegram лимит)
+            current_time = time.time()
+            if current_time - last_typing_time >= 5:
+                try:
+                    await update.message.chat.send_action(action="typing")
+                    last_typing_time = current_time
+                except Exception:
+                    pass  # Игнорируем ошибки flood control
 
             # Обновляем сообщение когда накопилось достаточно новых символов
             should_update = len(full_response) - last_update_length >= 15
