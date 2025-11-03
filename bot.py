@@ -75,6 +75,12 @@ def main():
             pattern="^admin_"
         ))
 
+        # Cleanup callbacks
+        application.add_handler(CallbackQueryHandler(
+            handlers.handle_cleanup_callback,
+            pattern="^cleanup_"
+        ))
+
         # Текстовые сообщения (должны быть последними)
         application.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND,

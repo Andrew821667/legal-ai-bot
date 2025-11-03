@@ -47,7 +47,18 @@ ADMIN_PANEL_MENU = [
     [InlineKeyboardButton("📋 Логи (последние)", callback_data="admin_logs")],
     [InlineKeyboardButton("🔥 Горячие лиды", callback_data="admin_hot_leads")],
     [InlineKeyboardButton("📥 Экспорт данных", callback_data="admin_export")],
+    [InlineKeyboardButton("🗑️ Очистка данных", callback_data="admin_cleanup")],
     [InlineKeyboardButton("❌ Закрыть", callback_data="admin_close")]
+]
+
+# Меню очистки данных
+ADMIN_CLEANUP_MENU = [
+    [InlineKeyboardButton("🗑️ Очистить диалоги", callback_data="cleanup_conversations")],
+    [InlineKeyboardButton("🗑️ Очистить лиды", callback_data="cleanup_leads")],
+    [InlineKeyboardButton("🗑️ Очистить логи", callback_data="cleanup_logs")],
+    [InlineKeyboardButton("🗑️ Сбросить счетчики безопасности", callback_data="cleanup_security")],
+    [InlineKeyboardButton("⚠️ ОЧИСТИТЬ ВСЁ", callback_data="cleanup_all")],
+    [InlineKeyboardButton("◀️ Назад", callback_data="admin_panel")]
 ]
 
 
@@ -407,6 +418,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lead_id = lead_qualifier.lead_qualifier.process_lead_data(user_data['id'], lead_data)
 
             if lead_id:
+                # 📬 УВЕДОМЛЯЕМ АДМИНА О НОВОМ ЛИДЕ
+                # Отправляем уведомление в Telegram и на Email
+                await notify_admin_new_lead(context, lead_id, lead_data, user_data)
+
                 # Проверяем был ли уже предложен lead magnet
                 existing_lead = database.db.get_lead_by_user_id(user_data['id'])
                 lead_magnet_already_offered = existing_lead and existing_lead.get('lead_magnet_type') is not None
@@ -415,7 +430,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if not lead_magnet_already_offered and ai_brain.ai_brain.should_offer_lead_magnet(lead_data):
                     await offer_lead_magnet(update, context)
 
-                # Проверяем нужно ли уведомить админа
+                # Проверяем нужно ли уведомить админа (старая система, оставляем для совместимости)
                 if utils.is_hot_lead(lead_data):
                     admin_interface.admin_interface.send_admin_notification(
                         context.bot,
@@ -901,6 +916,25 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
             else:
                 await query.message.reply_text("Ошибка при экспорте данных")
 
+        elif action == "admin_cleanup":
+            # Меню очистки данных
+            cleanup_message = (
+                "🗑️ ОЧИСТКА ДАННЫХ\n\n"
+                "⚠️ ВНИМАНИЕ: Данные будут удалены безвозвратно!\n\n"
+                "Выберите что очистить:"
+            )
+            reply_markup = InlineKeyboardMarkup(ADMIN_CLEANUP_MENU)
+            await query.message.edit_text(cleanup_message, reply_markup=reply_markup)
+
+        elif action == "admin_panel":
+            # Вернуться в главное меню админ-панели
+            admin_panel_message = (
+                "⚙️ АДМИН-ПАНЕЛЬ\n\n"
+                "Выберите действие:"
+            )
+            reply_markup = InlineKeyboardMarkup(ADMIN_PANEL_MENU)
+            await query.message.edit_text(admin_panel_message, reply_markup=reply_markup)
+
         elif action == "admin_close":
             # Закрыть админ-панель
             await query.message.edit_text("⚙️ Админ-панель закрыта")
@@ -908,6 +942,180 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
     except Exception as e:
         logger.error(f"Error in handle_admin_panel_callback: {e}")
         await query.message.reply_text(f"Ошибка: {str(e)}")
+
+
+async def handle_cleanup_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик cleanup операций"""
+    query = update.callback_query
+    await query.answer()
+
+    user = query.from_user
+
+    # Проверка что это админ
+    if user.id != config.ADMIN_TELEGRAM_ID:
+        await query.message.reply_text("У вас нет доступа к этой функции")
+        return
+
+    action = query.data
+
+    try:
+        if action == "cleanup_conversations":
+            # Очистка всех диалогов
+            conn = database.db.conn
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM conversations")
+            conn.commit()
+            count = cursor.rowcount
+
+            await query.message.reply_text(f"✅ Удалено {count} сообщений из диалогов")
+            logger.info(f"Admin {user.id} cleared {count} conversations")
+
+        elif action == "cleanup_leads":
+            # Очистка всех лидов
+            conn = database.db.conn
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM leads")
+            conn.commit()
+            count = cursor.rowcount
+
+            await query.message.reply_text(f"✅ Удалено {count} лидов")
+            logger.info(f"Admin {user.id} cleared {count} leads")
+
+        elif action == "cleanup_logs":
+            # Очистка логов
+            import os
+            if os.path.exists(config.LOG_FILE):
+                # Создаем backup
+                backup_file = f"{config.LOG_FILE}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                os.rename(config.LOG_FILE, backup_file)
+                # Создаем новый пустой файл
+                open(config.LOG_FILE, 'w').close()
+                await query.message.reply_text(f"✅ Логи очищены\nBackup: {backup_file}")
+                logger.info(f"Admin {user.id} cleared logs, backup: {backup_file}")
+            else:
+                await query.message.reply_text("Файл логов не найден")
+
+        elif action == "cleanup_security":
+            # Сброс счетчиков безопасности
+            security.security_manager.message_timestamps.clear()
+            security.security_manager.token_usage.clear()
+            security.security_manager.cooldowns.clear()
+            security.security_manager.suspicious_users.clear()
+            security.security_manager.blacklist.clear()
+            security.security_manager.total_tokens_today = 0
+
+            await query.message.reply_text("✅ Счетчики безопасности сброшены")
+            logger.info(f"Admin {user.id} reset security counters")
+
+        elif action == "cleanup_all":
+            # Очистка всего
+            conn = database.db.conn
+            cursor = conn.cursor()
+
+            # Диалоги
+            cursor.execute("DELETE FROM conversations")
+            conv_count = cursor.rowcount
+
+            # Лиды
+            cursor.execute("DELETE FROM leads")
+            leads_count = cursor.rowcount
+
+            # Уведомления
+            cursor.execute("DELETE FROM admin_notifications")
+            notif_count = cursor.rowcount
+
+            conn.commit()
+
+            # Логи
+            import os
+            if os.path.exists(config.LOG_FILE):
+                backup_file = f"{config.LOG_FILE}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                os.rename(config.LOG_FILE, backup_file)
+                open(config.LOG_FILE, 'w').close()
+
+            # Безопасность
+            security.security_manager.message_timestamps.clear()
+            security.security_manager.token_usage.clear()
+            security.security_manager.cooldowns.clear()
+            security.security_manager.suspicious_users.clear()
+            security.security_manager.blacklist.clear()
+            security.security_manager.total_tokens_today = 0
+
+            result_message = (
+                "✅ ВСЕ ДАННЫЕ ОЧИЩЕНЫ\n\n"
+                f"🗑️ Диалоги: {conv_count}\n"
+                f"🗑️ Лиды: {leads_count}\n"
+                f"🗑️ Уведомления: {notif_count}\n"
+                f"🗑️ Логи: очищены (backup создан)\n"
+                f"🗑️ Счетчики безопасности: сброшены"
+            )
+
+            await query.message.reply_text(result_message)
+            logger.warning(f"Admin {user.id} cleared ALL data")
+
+    except Exception as e:
+        logger.error(f"Error in handle_cleanup_callback: {e}")
+        await query.message.reply_text(f"Ошибка: {str(e)}")
+
+
+async def notify_admin_new_lead(context, lead_id: int, lead_data: dict, user_data: dict):
+    """Отправка уведомления админу о новом лиде"""
+    try:
+        # Получаем информацию о лиде
+        lead = database.db.get_lead_by_id(lead_id)
+        if not lead:
+            return
+
+        # Формируем сообщение для админа
+        temperature_emoji = {
+            'hot': '🔥',
+            'warm': '♨️',
+            'cold': '❄️'
+        }.get(lead.get('temperature', 'cold'), '❓')
+
+        notification_message = (
+            f"{temperature_emoji} НОВЫЙ ЛИД!\n\n"
+            f"👤 Имя: {lead.get('name') or 'Не указано'}\n"
+            f"📱 Username: @{user_data.get('username') or 'нет'}\n"
+            f"🏢 Компания: {lead.get('company') or 'Не указана'}\n"
+            f"📧 Email: {lead.get('email') or 'Не указан'}\n"
+            f"📞 Телефон: {lead.get('phone') or 'Не указан'}\n\n"
+            f"📊 Детали:\n"
+            f"• Юристов: {lead.get('team_size') or 'Не указано'}\n"
+            f"• Договоров/мес: {lead.get('contracts_per_month') or 'Не указано'}\n"
+            f"• Бюджет: {lead.get('budget') or 'Не указан'}\n"
+            f"• Срочность: {lead.get('urgency') or 'Не указана'}\n\n"
+            f"💭 Боль: {lead.get('pain_point') or 'Не указана'}\n"
+            f"🎯 Интересует: {lead.get('interested_service') or 'Не указано'}\n\n"
+            f"🌡️ Температура: {lead.get('temperature', 'cold').upper()}"
+        )
+
+        # Отправляем в Telegram админу
+        await context.bot.send_message(
+            chat_id=config.ADMIN_TELEGRAM_ID,
+            text=notification_message
+        )
+
+        logger.info(f"Admin notified about new lead {lead_id}")
+
+        # Отправляем на email (если настроен SMTP)
+        if config.SMTP_USER and config.SMTP_PASSWORD:
+            try:
+                email_subject = f"[Legal AI Bot] Новый лид: {lead.get('name') or user_data.get('first_name')}"
+                email_body = notification_message
+
+                email_sender.email_sender.send_email(
+                    to_email=config.SMTP_USER,  # Админу на почту
+                    subject=email_subject,
+                    body=email_body
+                )
+
+                logger.info(f"Email notification sent to admin about lead {lead_id}")
+            except Exception as e:
+                logger.error(f"Error sending email notification: {e}")
+
+    except Exception as e:
+        logger.error(f"Error in notify_admin_new_lead: {e}")
 
 
 # === ERROR HANDLER ===
