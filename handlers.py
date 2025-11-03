@@ -13,6 +13,8 @@ import admin_interface
 import config
 import utils
 import email_sender
+import security
+import prompts
 
 logger = logging.getLogger(__name__)
 
@@ -261,6 +263,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         logger.info(f"Message from user {user.id}: {message_text[:50]}")
 
+        # 🛡️ ПРОВЕРКА БЕЗОПАСНОСТИ
+        is_allowed, block_reason = security.security_manager.check_all_security(user.id, message_text)
+        if not is_allowed:
+            logger.warning(f"Security check failed for user {user.id}: {block_reason}")
+            await update.message.reply_text(block_reason)
+            return
+
         # Получаем или создаем пользователя
         user_data = database.db.get_user_by_telegram_id(user.id)
         if not user_data:
@@ -348,6 +357,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Сохраняем ответ ассистента
         database.db.add_message(user_data['id'], 'assistant', full_response)
+
+        # 🛡️ УЧЕТ ИСПОЛЬЗОВАННЫХ ТОКЕНОВ
+        # Оцениваем токены: user message + assistant response + system prompt
+        user_tokens = security.security_manager.estimate_tokens(message_text)
+        assistant_tokens = security.security_manager.estimate_tokens(full_response)
+        system_tokens = security.security_manager.estimate_tokens(prompts.SYSTEM_PROMPT)
+        total_tokens = user_tokens + assistant_tokens + system_tokens
+        security.security_manager.add_tokens_used(total_tokens)
+        logger.debug(f"Tokens used: user={user_tokens}, assistant={assistant_tokens}, system={system_tokens}, total={total_tokens}")
 
         # Извлекаем данные лида из диалога
         lead_data = ai_brain.ai_brain.extract_lead_data(conversation_history)
@@ -643,6 +661,119 @@ async def view_conversation_command(update: Update, context: ContextTypes.DEFAUL
     except Exception as e:
         logger.error(f"Error in view_conversation_command: {e}")
         await update.message.reply_text("Ошибка при получении истории диалога")
+
+
+async def security_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /security_stats - статистика безопасности (только для админа)"""
+    try:
+        user = update.effective_user
+
+        if user.id != config.ADMIN_TELEGRAM_ID:
+            await update.message.reply_text("У вас нет доступа к этой команде")
+            return
+
+        stats = security.security_manager.get_stats()
+
+        stats_message = (
+            "🛡️ СТАТИСТИКА БЕЗОПАСНОСТИ\n\n"
+            f"📊 Токены:\n"
+            f"• Использовано сегодня: {stats['total_tokens_today']:,}\n"
+            f"• Дневной бюджет: {stats['daily_budget']:,}\n"
+            f"• Осталось: {stats['budget_remaining']:,}\n"
+            f"• Использовано: {stats['budget_percentage']:.1f}%\n\n"
+            f"🚫 Безопасность:\n"
+            f"• Заблокированных пользователей: {stats['blacklisted_users']}\n"
+            f"• Подозрительных пользователей: {stats['suspicious_users']}\n\n"
+            f"⚙️ Лимиты:\n"
+            f"• Сообщений в минуту: {security.security_manager.RATE_LIMITS['messages_per_minute']}\n"
+            f"• Сообщений в час: {security.security_manager.RATE_LIMITS['messages_per_hour']}\n"
+            f"• Сообщений в день: {security.security_manager.RATE_LIMITS['messages_per_day']}\n"
+            f"• Cooldown: {security.security_manager.COOLDOWN_SECONDS} сек\n"
+            f"• Макс длина сообщения: {security.security_manager.MAX_MESSAGE_LENGTH} символов"
+        )
+
+        await update.message.reply_text(stats_message)
+
+    except Exception as e:
+        logger.error(f"Error in security_stats_command: {e}")
+        await update.message.reply_text("Ошибка при получении статистики безопасности")
+
+
+async def blacklist_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /blacklist <telegram_id> - добавить в черный список (только для админа)"""
+    try:
+        user = update.effective_user
+
+        if user.id != config.ADMIN_TELEGRAM_ID:
+            await update.message.reply_text("У вас нет доступа к этой команде")
+            return
+
+        # Парсим аргументы
+        args = context.args
+        if not args:
+            await update.message.reply_text(
+                "Использование: /blacklist <telegram_id> [причина]\n\n"
+                "Пример: /blacklist 123456789 Спам"
+            )
+            return
+
+        target_user_id = int(args[0])
+        reason = " ".join(args[1:]) if len(args) > 1 else "Заблокирован админом"
+
+        # Добавляем в черный список
+        security.security_manager.add_to_blacklist(target_user_id, reason)
+
+        await update.message.reply_text(
+            f"✅ Пользователь {target_user_id} добавлен в черный список\n"
+            f"Причина: {reason}"
+        )
+
+        logger.info(f"Admin {user.id} blacklisted user {target_user_id}: {reason}")
+
+    except ValueError:
+        await update.message.reply_text("Неверный telegram_id. Должно быть число.")
+    except Exception as e:
+        logger.error(f"Error in blacklist_command: {e}")
+        await update.message.reply_text("Ошибка при добавлении в черный список")
+
+
+async def unblacklist_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /unblacklist <telegram_id> - удалить из черного списка (только для админа)"""
+    try:
+        user = update.effective_user
+
+        if user.id != config.ADMIN_TELEGRAM_ID:
+            await update.message.reply_text("У вас нет доступа к этой команде")
+            return
+
+        # Парсим аргументы
+        args = context.args
+        if not args:
+            await update.message.reply_text(
+                "Использование: /unblacklist <telegram_id>\n\n"
+                "Пример: /unblacklist 123456789"
+            )
+            return
+
+        target_user_id = int(args[0])
+
+        # Проверяем что пользователь в черном списке
+        if target_user_id not in security.security_manager.blacklist:
+            await update.message.reply_text(f"Пользователь {target_user_id} не найден в черном списке")
+            return
+
+        # Удаляем из черного списка
+        security.security_manager.remove_from_blacklist(target_user_id)
+
+        await update.message.reply_text(f"✅ Пользователь {target_user_id} удален из черного списка")
+
+        logger.info(f"Admin {user.id} unblacklisted user {target_user_id}")
+
+    except ValueError:
+        await update.message.reply_text("Неверный telegram_id. Должно быть число.")
+    except Exception as e:
+        logger.error(f"Error in unblacklist_command: {e}")
+        await update.message.reply_text("Ошибка при удалении из черного списка")
 
 
 # === ERROR HANDLER ===

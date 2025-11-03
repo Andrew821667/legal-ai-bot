@@ -83,6 +83,11 @@ def main():
         application.add_handler(CommandHandler("export", handlers.export_command))
         application.add_handler(CommandHandler("view_conversation", handlers.view_conversation_command))
 
+        # Security commands
+        application.add_handler(CommandHandler("security_stats", handlers.security_stats_command))
+        application.add_handler(CommandHandler("blacklist", handlers.blacklist_command))
+        application.add_handler(CommandHandler("unblacklist", handlers.unblacklist_command))
+
         # === ERROR HANDLER ===
         application.add_error_handler(handlers.error_handler)
 
