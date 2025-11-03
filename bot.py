@@ -69,6 +69,12 @@ def main():
             pattern="^magnet_"
         ))
 
+        # Admin panel callbacks
+        application.add_handler(CallbackQueryHandler(
+            handlers.handle_admin_panel_callback,
+            pattern="^admin_"
+        ))
+
         # Текстовые сообщения (должны быть последними)
         application.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND,

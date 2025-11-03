@@ -4,6 +4,7 @@ Telegram handlers - обработчики команд и сообщений
 import logging
 import time
 import re
+from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import database
@@ -25,10 +26,28 @@ MAIN_MENU = [
     [KeyboardButton("🔄 Начать заново")]
 ]
 
+# Админское меню (видно только админу)
+ADMIN_MENU = [
+    [KeyboardButton("📋 Услуги"), KeyboardButton("💰 Цены")],
+    [KeyboardButton("📞 Консультация"), KeyboardButton("❓ Помощь")],
+    [KeyboardButton("⚙️ Админ-панель"), KeyboardButton("🔄 Начать заново")]
+]
+
 LEAD_MAGNET_MENU = [
     [InlineKeyboardButton("📞 Консультация 30 мин", callback_data="magnet_consultation")],
     [InlineKeyboardButton("📄 Чек-лист по договорам", callback_data="magnet_checklist")],
     [InlineKeyboardButton("🎯 Демо-анализ договора", callback_data="magnet_demo")]
+]
+
+# Админ-панель inline кнопки
+ADMIN_PANEL_MENU = [
+    [InlineKeyboardButton("📊 Общая статистика", callback_data="admin_stats")],
+    [InlineKeyboardButton("🛡️ Безопасность", callback_data="admin_security")],
+    [InlineKeyboardButton("👥 Список лидов", callback_data="admin_leads")],
+    [InlineKeyboardButton("📋 Логи (последние)", callback_data="admin_logs")],
+    [InlineKeyboardButton("🔥 Горячие лиды", callback_data="admin_hot_leads")],
+    [InlineKeyboardButton("📥 Экспорт данных", callback_data="admin_export")],
+    [InlineKeyboardButton("❌ Закрыть", callback_data="admin_close")]
 ]
 
 
@@ -205,7 +224,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Чем могу помочь вам сегодня?"
         )
 
-        reply_markup = ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
+        # Админу показываем расширенное меню с кнопкой админ-панели
+        if user.id == config.ADMIN_TELEGRAM_ID:
+            reply_markup = ReplyKeyboardMarkup(ADMIN_MENU, resize_keyboard=True)
+            welcome_message += "\n\n⚙️ Доступна админ-панель!"
+        else:
+            reply_markup = ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
 
         await update.message.reply_text(welcome_message, reply_markup=reply_markup)
 
@@ -296,6 +320,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if message_text == "🔄 Начать заново":
             await reset_command(update, context)
+            return
+
+        # Админ-панель (только для админа)
+        if message_text == "⚙️ Админ-панель":
+            if user.id == config.ADMIN_TELEGRAM_ID:
+                await show_admin_panel(update, context)
+            else:
+                await update.message.reply_text("У вас нет доступа к этой функции")
             return
 
         # Проверяем триггеры передачи админу
@@ -774,6 +806,108 @@ async def unblacklist_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         logger.error(f"Error in unblacklist_command: {e}")
         await update.message.reply_text("Ошибка при удалении из черного списка")
+
+
+async def show_admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показ админ-панели"""
+    try:
+        admin_panel_message = (
+            "⚙️ АДМИН-ПАНЕЛЬ\n\n"
+            "Выберите действие:"
+        )
+
+        reply_markup = InlineKeyboardMarkup(ADMIN_PANEL_MENU)
+        await update.message.reply_text(admin_panel_message, reply_markup=reply_markup)
+
+    except Exception as e:
+        logger.error(f"Error in show_admin_panel: {e}")
+        await update.message.reply_text("Ошибка при открытии админ-панели")
+
+
+async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик callback кнопок админ-панели"""
+    query = update.callback_query
+    await query.answer()
+
+    user = query.from_user
+
+    # Проверка что это админ
+    if user.id != config.ADMIN_TELEGRAM_ID:
+        await query.message.reply_text("У вас нет доступа к этой функции")
+        return
+
+    action = query.data
+
+    try:
+        if action == "admin_stats":
+            # Общая статистика
+            stats_message = admin_interface.admin_interface.format_statistics(30)
+            await query.message.reply_text(stats_message)
+
+        elif action == "admin_security":
+            # Статистика безопасности
+            stats = security.security_manager.get_stats()
+
+            stats_message = (
+                "🛡️ СТАТИСТИКА БЕЗОПАСНОСТИ\n\n"
+                f"📊 Токены:\n"
+                f"• Использовано сегодня: {stats['total_tokens_today']:,}\n"
+                f"• Дневной бюджет: {stats['daily_budget']:,}\n"
+                f"• Осталось: {stats['budget_remaining']:,}\n"
+                f"• Использовано: {stats['budget_percentage']:.1f}%\n\n"
+                f"🚫 Безопасность:\n"
+                f"• Заблокированных пользователей: {stats['blacklisted_users']}\n"
+                f"• Подозрительных пользователей: {stats['suspicious_users']}\n\n"
+                f"⚙️ Лимиты:\n"
+                f"• Сообщений в минуту: {security.security_manager.RATE_LIMITS['messages_per_minute']}\n"
+                f"• Сообщений в час: {security.security_manager.RATE_LIMITS['messages_per_hour']}\n"
+                f"• Сообщений в день: {security.security_manager.RATE_LIMITS['messages_per_day']}\n"
+                f"• Cooldown: {security.security_manager.COOLDOWN_SECONDS} сек\n"
+                f"• Макс длина сообщения: {security.security_manager.MAX_MESSAGE_LENGTH} символов"
+            )
+            await query.message.reply_text(stats_message)
+
+        elif action == "admin_leads":
+            # Список всех лидов
+            leads_message = admin_interface.admin_interface.format_leads_list(limit=20)
+            await query.message.reply_text(leads_message)
+
+        elif action == "admin_hot_leads":
+            # Только горячие лиды
+            leads_message = admin_interface.admin_interface.format_leads_list(temperature='hot', limit=10)
+            await query.message.reply_text(leads_message)
+
+        elif action == "admin_logs":
+            # Последние строки логов
+            import subprocess
+            result = subprocess.run(['tail', '-50', config.LOG_FILE], capture_output=True, text=True)
+            logs = result.stdout
+
+            if len(logs) > 4000:
+                logs = logs[-4000:]  # Telegram limit
+
+            await query.message.reply_text(f"📋 ПОСЛЕДНИЕ ЛОГИ:\n\n```\n{logs}\n```", parse_mode="Markdown")
+
+        elif action == "admin_export":
+            # Экспорт лидов в CSV
+            csv_data = admin_interface.admin_interface.export_leads_to_csv()
+
+            if csv_data:
+                await query.message.reply_document(
+                    document=csv_data.getvalue().encode('utf-8'),
+                    filename=f'leads_export_{datetime.now().strftime("%Y%m%d")}.csv',
+                    caption="📥 Экспорт лидов"
+                )
+            else:
+                await query.message.reply_text("Ошибка при экспорте данных")
+
+        elif action == "admin_close":
+            # Закрыть админ-панель
+            await query.message.edit_text("⚙️ Админ-панель закрыта")
+
+    except Exception as e:
+        logger.error(f"Error in handle_admin_panel_callback: {e}")
+        await query.message.reply_text(f"Ошибка: {str(e)}")
 
 
 # === ERROR HANDLER ===
