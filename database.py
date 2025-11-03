@@ -84,6 +84,8 @@ class Database:
                     lead_magnet_type TEXT,
                     lead_magnet_delivered BOOLEAN DEFAULT 0,
 
+                    notification_sent BOOLEAN DEFAULT 0,
+
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -111,6 +113,13 @@ class Database:
 
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_lead_id ON admin_notifications(lead_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_sent_at ON admin_notifications(sent_at)")
+
+            # Миграция: добавляем notification_sent если его нет
+            cursor.execute("PRAGMA table_info(leads)")
+            columns = [column[1] for column in cursor.fetchall()]
+            if 'notification_sent' not in columns:
+                cursor.execute("ALTER TABLE leads ADD COLUMN notification_sent BOOLEAN DEFAULT 0")
+                logger.info("Added notification_sent column to leads table")
 
             conn.commit()
             logger.info("Database initialized successfully")
@@ -301,6 +310,28 @@ class Database:
                 return dict(row)
             return None
 
+        finally:
+            conn.close()
+
+    def mark_lead_notification_sent(self, lead_id: int):
+        """Помечаем что уведомление о лиде отправлено"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                UPDATE leads
+                SET notification_sent = 1
+                WHERE id = ?
+            """, (lead_id,))
+
+            conn.commit()
+            logger.info(f"Lead {lead_id} marked as notification sent")
+
+        except Exception as e:
+            logger.error(f"Error marking lead notification sent: {e}")
+            conn.rollback()
+            raise
         finally:
             conn.close()
 

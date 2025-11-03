@@ -1085,11 +1085,16 @@ async def handle_cleanup_callback(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def notify_admin_new_lead(context, lead_id: int, lead_data: dict, user_data: dict):
-    """Отправка уведомления админу о новом лиде"""
+    """Отправка уведомления админу о новом лиде (ОДИН РАЗ!)"""
     try:
         # Получаем информацию о лиде
         lead = database.db.get_lead_by_id(lead_id)
         if not lead:
+            return
+
+        # Проверяем было ли уже отправлено уведомление
+        if lead.get('notification_sent'):
+            logger.info(f"Lead {lead_id} notification already sent, skipping")
             return
 
         # Формируем сообщение для админа
@@ -1099,10 +1104,15 @@ async def notify_admin_new_lead(context, lead_id: int, lead_data: dict, user_dat
             'cold': '❄️'
         }.get(lead.get('temperature', 'cold'), '❓')
 
+        # Получаем telegram username
+        username = user_data.get('username')
+        username_str = f"@{username}" if username else "нет"
+        telegram_id = user_data.get('telegram_id') or user_data.get('id')
+
         notification_message = (
             f"{temperature_emoji} НОВЫЙ ЛИД!\n\n"
             f"👤 Имя: {lead.get('name') or 'Не указано'}\n"
-            f"📱 Username: @{user_data.get('username') or 'нет'}\n"
+            f"📱 Telegram: {username_str} (ID: {telegram_id})\n"
             f"🏢 Компания: {lead.get('company') or 'Не указана'}\n"
             f"📧 Email: {lead.get('email') or 'Не указан'}\n"
             f"📞 Телефон: {lead.get('phone') or 'Не указан'}\n\n"
@@ -1124,6 +1134,9 @@ async def notify_admin_new_lead(context, lead_id: int, lead_data: dict, user_dat
             chat_id=target_chat_id,
             text=notification_message
         )
+
+        # Помечаем что уведомление отправлено
+        database.db.mark_lead_notification_sent(lead_id)
 
         logger.info(f"Lead notification sent to chat {target_chat_id} for lead {lead_id}")
 
