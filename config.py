@@ -14,7 +14,7 @@ ADMIN_TELEGRAM_ID = int(os.getenv('ADMIN_TELEGRAM_ID', 0))
 
 # OpenAI настройки
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
-MAX_TOKENS = int(os.getenv('MAX_TOKENS', 800))
+MAX_TOKENS = int(os.getenv('MAX_TOKENS', 4000))  # Увеличено до 4000 чтобы не было обрывов фраз
 TEMPERATURE = float(os.getenv('TEMPERATURE', 0.7))
 
 # База данных
