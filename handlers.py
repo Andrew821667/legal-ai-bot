@@ -410,17 +410,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         security.security_manager.add_tokens_used(total_tokens)
         logger.debug(f"Tokens used: user={user_tokens}, assistant={assistant_tokens}, system={system_tokens}, total={total_tokens}")
 
-        # Извлекаем данные лида из диалога
-        lead_data = ai_brain.ai_brain.extract_lead_data(conversation_history)
+        # Извлекаем данные лида из диалога (ТОЛЬКО если это НЕ админ!)
+        # Админские сообщения НЕ должны создавать лиды
+        if user.id != config.ADMIN_TELEGRAM_ID:
+            lead_data = ai_brain.ai_brain.extract_lead_data(conversation_history)
 
-        if lead_data:
-            # Обрабатываем данные лида
-            lead_id = lead_qualifier.lead_qualifier.process_lead_data(user_data['id'], lead_data)
+            if lead_data:
+                # Обрабатываем данные лида
+                lead_id = lead_qualifier.lead_qualifier.process_lead_data(user_data['id'], lead_data)
 
-            if lead_id:
-                # 📬 УВЕДОМЛЯЕМ АДМИНА О НОВОМ ЛИДЕ
-                # Отправляем уведомление в Telegram и на Email
-                await notify_admin_new_lead(context, lead_id, lead_data, user_data)
+                if lead_id:
+                    # 📬 УВЕДОМЛЯЕМ АДМИНА О НОВОМ ЛИДЕ
+                    # Отправляем уведомление в Telegram и на Email
+                    await notify_admin_new_lead(context, lead_id, lead_data, user_data)
 
                 # Проверяем был ли уже предложен lead magnet
                 existing_lead = database.db.get_lead_by_user_id(user_data['id'])
@@ -1108,13 +1110,16 @@ async def notify_admin_new_lead(context, lead_id: int, lead_data: dict, user_dat
             f"🌡️ Температура: {lead.get('temperature', 'cold').upper()}"
         )
 
-        # Отправляем в Telegram админу
+        # Отправляем в Telegram
+        # Если задан LEADS_CHAT_ID - отправляем в отдельный чат, иначе напрямую админу
+        target_chat_id = config.LEADS_CHAT_ID if config.LEADS_CHAT_ID else config.ADMIN_TELEGRAM_ID
+
         await context.bot.send_message(
-            chat_id=config.ADMIN_TELEGRAM_ID,
+            chat_id=target_chat_id,
             text=notification_message
         )
 
-        logger.info(f"Admin notified about new lead {lead_id}")
+        logger.info(f"Lead notification sent to chat {target_chat_id} for lead {lead_id}")
 
         # Отправляем на email (если настроен SMTP)
         if config.SMTP_USER and config.SMTP_PASSWORD:

@@ -12,6 +12,12 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 ADMIN_TELEGRAM_ID = int(os.getenv('ADMIN_TELEGRAM_ID', 0))
 
+# Опциональный отдельный чат для уведомлений о лидах
+# Если не указан, уведомления отправляются напрямую админу
+LEADS_CHAT_ID = os.getenv('LEADS_CHAT_ID', None)
+if LEADS_CHAT_ID:
+    LEADS_CHAT_ID = int(LEADS_CHAT_ID)
+
 # OpenAI настройки
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
 MAX_TOKENS = int(os.getenv('MAX_TOKENS', 4000))  # Увеличено до 4000 чтобы не было обрывов фраз
