@@ -300,14 +300,54 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Получаем историю диалога
         conversation_history = database.db.get_conversation_history(user_data['id'])
 
-        # Генерируем ответ через AI
-        response = ai_brain.ai_brain.generate_response(conversation_history)
+        # Генерируем ответ через AI с потоковой передачей (streaming)
+        await update.message.chat.send_action(action="typing")
+
+        full_response = ""
+        sent_message = None
+        chunk_buffer = ""
+        last_update_length = 0
+
+        # Получаем поток ответа напрямую от OpenAI
+        async for chunk in ai_brain.ai_brain.generate_response_stream(conversation_history):
+            full_response += chunk
+            chunk_buffer += chunk
+
+            # Показываем typing периодически
+            if len(chunk_buffer) > 50:
+                await update.message.chat.send_action(action="typing")
+
+            # Обновляем сообщение когда накопилось достаточно новых символов
+            should_update = len(full_response) - last_update_length >= 15
+
+            if should_update or len(chunk_buffer) > 40:
+                if sent_message is None:
+                    # Первая отправка - когда накопилось хотя бы 20 символов
+                    if len(full_response.strip()) >= 20:
+                        sent_message = await update.message.reply_text(full_response)
+                        last_update_length = len(full_response)
+                        chunk_buffer = ""
+                else:
+                    # Обновляем существующее сообщение
+                    try:
+                        await sent_message.edit_text(full_response)
+                        last_update_length = len(full_response)
+                        chunk_buffer = ""
+                    except Exception:
+                        pass  # Telegram rate limit, пропускаем
+
+        # Финальное обновление с полным текстом
+        if sent_message:
+            try:
+                await sent_message.edit_text(full_response)
+            except Exception:
+                pass
+        else:
+            # Если текст был слишком коротким для постепенного вывода
+            await update.message.reply_text(full_response)
 
         # Сохраняем ответ ассистента
-        database.db.add_message(user_data['id'], 'assistant', response)
-
-        # Отправляем ответ постепенно (как в ChatGPT)
-        await send_message_gradually(update, response)
+        database.db.add_message(user_data['id'], 'assistant', full_response)
 
         # Извлекаем данные лида из диалога
         lead_data = ai_brain.ai_brain.extract_lead_data(conversation_history)

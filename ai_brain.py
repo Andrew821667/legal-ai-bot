@@ -2,7 +2,7 @@
 AI Brain - интеграция с OpenAI GPT
 """
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, AsyncGenerator
 import json
 from openai import OpenAI
 import config
@@ -19,6 +19,48 @@ class AIBrain:
         self.model = config.OPENAI_MODEL
         self.max_tokens = config.MAX_TOKENS
         self.temperature = config.TEMPERATURE
+
+    async def generate_response_stream(self, conversation_history: List[Dict[str, str]]) -> AsyncGenerator[str, None]:
+        """
+        Генерация ответа с потоковой передачей (streaming) от OpenAI
+
+        Args:
+            conversation_history: История диалога в формате [{"role": "user"/"assistant", "message": "..."}]
+
+        Yields:
+            Части ответа ассистента по мере их генерации
+        """
+        try:
+            # Преобразуем историю в формат OpenAI
+            messages = [{"role": "system", "content": prompts.SYSTEM_PROMPT}]
+
+            for msg in conversation_history:
+                messages.append({
+                    "role": msg["role"],
+                    "content": msg["message"]
+                })
+
+            logger.debug(f"Sending streaming request to OpenAI with {len(messages)} messages")
+
+            # Запрос к OpenAI с включенным streaming
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+                stream=True  # Включаем потоковую передачу!
+            )
+
+            # Отдаем части ответа по мере их поступления
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+
+            logger.info("Streaming response completed")
+
+        except Exception as e:
+            logger.error(f"Error generating streaming response: {e}")
+            yield "Извините, произошла ошибка при обработке вашего запроса. Попробуйте еще раз или свяжитесь с нашей командой напрямую."
 
     def generate_response(self, conversation_history: List[Dict[str, str]]) -> str:
         """
