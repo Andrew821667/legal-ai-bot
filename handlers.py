@@ -961,25 +961,31 @@ async def handle_cleanup_callback(update: Update, context: ContextTypes.DEFAULT_
     try:
         if action == "cleanup_conversations":
             # Очистка всех диалогов
-            conn = database.db.conn
+            conn = database.db.get_connection()
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM conversations")
-            conn.commit()
-            count = cursor.rowcount
+            try:
+                cursor.execute("DELETE FROM conversations")
+                conn.commit()
+                count = cursor.rowcount
 
-            await query.message.reply_text(f"✅ Удалено {count} сообщений из диалогов")
-            logger.info(f"Admin {user.id} cleared {count} conversations")
+                await query.message.reply_text(f"✅ Удалено {count} сообщений из диалогов")
+                logger.info(f"Admin {user.id} cleared {count} conversations")
+            finally:
+                conn.close()
 
         elif action == "cleanup_leads":
             # Очистка всех лидов
-            conn = database.db.conn
+            conn = database.db.get_connection()
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM leads")
-            conn.commit()
-            count = cursor.rowcount
+            try:
+                cursor.execute("DELETE FROM leads")
+                conn.commit()
+                count = cursor.rowcount
 
-            await query.message.reply_text(f"✅ Удалено {count} лидов")
-            logger.info(f"Admin {user.id} cleared {count} leads")
+                await query.message.reply_text(f"✅ Удалено {count} лидов")
+                logger.info(f"Admin {user.id} cleared {count} leads")
+            finally:
+                conn.close()
 
         elif action == "cleanup_logs":
             # Очистка логов
@@ -1009,22 +1015,28 @@ async def handle_cleanup_callback(update: Update, context: ContextTypes.DEFAULT_
 
         elif action == "cleanup_all":
             # Очистка всего
-            conn = database.db.conn
+            conn = database.db.get_connection()
             cursor = conn.cursor()
 
-            # Диалоги
-            cursor.execute("DELETE FROM conversations")
-            conv_count = cursor.rowcount
+            try:
+                # Диалоги
+                cursor.execute("DELETE FROM conversations")
+                conv_count = cursor.rowcount
 
-            # Лиды
-            cursor.execute("DELETE FROM leads")
-            leads_count = cursor.rowcount
+                # Лиды
+                cursor.execute("DELETE FROM leads")
+                leads_count = cursor.rowcount
 
-            # Уведомления
-            cursor.execute("DELETE FROM admin_notifications")
-            notif_count = cursor.rowcount
+                # Уведомления
+                cursor.execute("DELETE FROM admin_notifications")
+                notif_count = cursor.rowcount
 
-            conn.commit()
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
 
             # Логи
             import os
