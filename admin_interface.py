@@ -33,7 +33,20 @@ class AdminInterface:
         try:
             stats = self.db.get_statistics(days)
 
+            # Получаем время начала учета статистики (первый пользователь)
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT MIN(created_at) FROM users")
+            first_user_time = cursor.fetchone()[0]
+            conn.close()
+
             message = f"📊 СТАТИСТИКА БОТА\n\n"
+
+            if first_user_time:
+                from datetime import datetime
+                stats_start = datetime.strptime(first_user_time, '%Y-%m-%d %H:%M:%S')
+                message += f"📅 Статистика с: {stats_start.strftime('%d.%m.%Y %H:%M')}\n\n"
+
             message += f"Период: последние {days} дней\n\n"
 
             message += f"👥 Пользователи:\n"
@@ -86,7 +99,19 @@ class AdminInterface:
             if not leads:
                 return "Лидов не найдено"
 
+            # Получаем время начала учета лидов (первый лид)
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT MIN(created_at) FROM leads")
+            first_lead_time = cursor.fetchone()[0]
+            conn.close()
+
             message = f"📋 СПИСОК ЛИДОВ\n\n"
+
+            if first_lead_time:
+                from datetime import datetime
+                leads_start = datetime.strptime(first_lead_time, '%Y-%m-%d %H:%M:%S')
+                message += f"📅 Статистика с: {leads_start.strftime('%d.%m.%Y %H:%M')}\n\n"
 
             if temperature:
                 temp_names = {'hot': 'Горячие', 'warm': 'Теплые', 'cold': 'Холодные'}
@@ -110,6 +135,12 @@ class AdminInterface:
                     message += f" ({lead['company']})"
 
                 message += "\n"
+
+                # Время создания лида
+                if lead.get('created_at'):
+                    from datetime import datetime
+                    lead_time = datetime.strptime(lead['created_at'], '%Y-%m-%d %H:%M:%S')
+                    message += f"   🕐 {lead_time.strftime('%d.%m.%Y %H:%M')}\n"
 
                 if lead.get('email'):
                     message += f"   📧 {lead['email']}\n"
