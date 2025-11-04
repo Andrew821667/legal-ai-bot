@@ -296,6 +296,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
         message_text = update.message.text
 
+        # 🛡️ ЗАЩИТА: проверяем что это текстовое сообщение
+        if not update.message or not update.message.text:
+            logger.warning(f"Skipping non-text message update type: {update.update_id}")
+            return
+
         logger.info(f"Message from user {user.id}: {message_text[:50]}")
 
         # 🛡️ ПРОВЕРКА БЕЗОПАСНОСТИ
