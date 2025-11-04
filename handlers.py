@@ -681,7 +681,7 @@ async def export_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if csv_data:
             await update.message.reply_document(
-                document=csv_data.getvalue().encode('utf-8'),
+                document=csv_data.encode('utf-8') if isinstance(csv_data, str) else csv_data,
                 filename='leads_export.csv',
                 caption="Экспорт лидов"
             )
@@ -931,7 +931,7 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
 
             if csv_data:
                 await query.message.reply_document(
-                    document=csv_data.getvalue().encode('utf-8'),
+                    document=csv_data.encode('utf-8') if isinstance(csv_data, str) else csv_data,
                     filename=f'leads_export_{datetime.now().strftime("%Y%m%d")}.csv',
                     caption="📥 Экспорт лидов"
                 )
@@ -1180,3 +1180,124 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text(
             "Произошла непредвиденная ошибка. Попробуйте еще раз или свяжитесь с поддержкой."
         )
+
+
+
+# ========================================
+# BUSINESS HANDLERS
+# ========================================
+
+async def handle_business_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка подключения/отключения Business аккаунта"""
+    try:
+        if update.business_connection:
+            connection = update.business_connection
+            if connection.is_enabled:
+                logger.info(f"✅ Business connection enabled: {connection.id} for user {connection.user_chat_id}")
+                await context.bot.send_message(
+                    chat_id=connection.user_chat_id,
+                    text="✅ Бот успешно подключен к вашему Telegram Business аккаунту!\n\n"
+                         "Теперь я буду автоматически отвечать на сообщения ваших клиентов."
+                )
+            else:
+                logger.info(f"❌ Business connection disabled: {connection.id}")
+    except Exception as e:
+        logger.error(f"Error in handle_business_connection: {e}", exc_info=True)
+
+
+async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка сообщений через Business аккаунт"""
+    try:
+        if not update.business_message:
+            return
+            
+        message = update.business_message
+        user_id = message.from_user.id
+        text = message.text or ""
+        
+        logger.info(f"📨 Business message from {user_id}: {text}")
+        
+        # Получаем пользователя
+        user = database.db.create_or_update_user(
+            telegram_id=user_id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+            last_name=message.from_user.last_name
+        )
+        
+        # Сохраняем сообщение пользователя
+        database.db.add_message(user, 'user', text)
+        
+        # Получаем историю диалога
+        conversation_history = database.db.get_conversation_history(user)
+        
+        # Отправляем "печатает..."
+        await context.bot.send_chat_action(
+            chat_id=message.chat.id,
+            action="typing",
+            business_connection_id=message.business_connection_id
+        )
+        
+        # Получаем ответ от AI
+        full_response = ""
+        async for chunk in ai_brain.ai_brain.generate_response_stream(conversation_history):
+            full_response += chunk
+        
+        # Сохраняем ответ
+        database.db.add_message(user, 'assistant', full_response)
+        
+        # Извлекаем и сохраняем лид данные (аналогично handle_message)
+        if user_id != config.ADMIN_TELEGRAM_ID:
+            lead_data = ai_brain.ai_brain.extract_lead_data(conversation_history)
+            
+            if lead_data:
+                # Обрабатываем данные лида
+                lead_id = lead_qualifier.lead_qualifier.process_lead_data(user, lead_data)
+                
+                if lead_id:
+                    # Уведомляем админа о новом лиде
+                    should_notify = (
+                        lead_data.get('temperature') in ['hot', 'warm'] or
+                        (lead_data.get('name') and
+                         (lead_data.get('email') or lead_data.get('phone')) and
+                         lead_data.get('pain_point'))
+                    )
+                    
+                    if should_notify:
+                        await notify_admin_new_lead(context, lead_id, lead_data, {"id": user, "telegram_id": user_id})
+                
+                # Проверяем нужно ли предложить lead magnet
+                existing_lead = database.db.get_lead_by_user_id(user)
+                lead_magnet_already_offered = existing_lead and existing_lead.get('lead_magnet_type') is not None
+                
+                if not lead_magnet_already_offered and ai_brain.ai_brain.should_offer_lead_magnet(lead_data):
+                    # Формируем сообщение с lead magnet кнопками
+                    lead_magnet_msg = "🎁 Чтобы помочь вам лучше, я подготовил специальные материалы:\n\n"
+                    reply_markup = InlineKeyboardMarkup(LEAD_MAGNET_MENU)
+                    await context.bot.send_message(
+                        chat_id=message.chat.id,
+                        text=lead_magnet_msg,
+                        reply_markup=reply_markup,
+                        business_connection_id=message.business_connection_id
+                    )
+        
+        # Отправляем ответ
+        await context.bot.send_message(
+            chat_id=message.chat.id,
+            text=full_response if full_response else "❌ Не удалось получить ответ",
+            business_connection_id=message.business_connection_id
+        )
+        
+        logger.info(f"✅ Business response sent to {user_id}")
+        
+    except Exception as e:
+        logger.error(f"Error in handle_business_message: {e}", exc_info=True)
+        try:
+            if update.business_message:
+                await context.bot.send_message(
+                    chat_id=update.business_message.chat.id,
+                    text="❌ Произошла ошибка. Попробуйте позже.",
+                    business_connection_id=update.business_message.business_connection_id
+                )
+        except:
+            pass
