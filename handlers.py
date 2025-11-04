@@ -426,9 +426,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 lead_id = lead_qualifier.lead_qualifier.process_lead_data(user_data['id'], lead_data)
 
                 if lead_id:
-                    # 📬 УВЕДОМЛЯЕМ АДМИНА О НОВОМ ЛИДЕ
-                    # Отправляем уведомление в Telegram и на Email
-                    await notify_admin_new_lead(context, lead_id, lead_data, user_data)
+                    # 📬 УВЕДОМЛЯЕМ АДМИНА О НОВОМ ЛИДЕ (только если квалифицирован!)
+                    # Отправляем уведомление ТОЛЬКО если:
+                    # 1. Лид горячий или теплый (не холодный)
+                    # 2. ИЛИ собраны ключевые данные (имя + контакт + боль)
+                    should_notify = (
+                        lead_data.get('temperature') in ['hot', 'warm'] or
+                        (lead_data.get('name') and
+                         (lead_data.get('email') or lead_data.get('phone')) and
+                         lead_data.get('pain_point'))
+                    )
+
+                    if should_notify:
+                        await notify_admin_new_lead(context, lead_id, lead_data, user_data)
 
                 # Проверяем был ли уже предложен lead magnet
                 existing_lead = database.db.get_lead_by_user_id(user_data['id'])
