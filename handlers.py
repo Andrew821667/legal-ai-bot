@@ -357,46 +357,73 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Получаем историю диалога
         conversation_history = database.db.get_conversation_history(user_data['id'])
 
-        # Генерируем ответ через AI с правильным streaming
-        # Используем typing индикатор вместо постоянного edit_text
+        # Генерируем ответ через AI с постепенным streaming (как в GPT)
         full_response = ""
-        last_typing_time = 0
+        sent_message = None
+        chunk_buffer = ""
+        last_update_length = 0
+        last_update_time = 0
         original_message = update.effective_message
 
         # Показываем typing индикатор в начале
         try:
             await original_message.chat.send_action(action="typing")
-            last_typing_time = time.time()
-            logger.info(f"Typing indicator sent (initial) for user {user_data['telegram_id']}")
+            logger.info(f"Typing indicator sent for user {user_data['telegram_id']}")
         except Exception as e:
             logger.warning(f"Failed to send typing indicator: {e}")
 
-        # Собираем весь ответ от OpenAI streaming
-        chunk_count = 0
+        # Собираем ответ от OpenAI и постепенно обновляем сообщение
         start_generation = time.time()
         async for chunk in ai_brain.ai_brain.generate_response_stream(conversation_history):
             full_response += chunk
-            chunk_count += 1
+            chunk_buffer += chunk
 
-            # Обновляем typing ЧАЩЕ - каждые 3 секунды (typing живет только 5 сек в Telegram)
+            # Обновляем сообщение когда накопилось достаточно новых символов
+            # ИЛИ прошло достаточно времени (для избежания rate limit)
             current_time = time.time()
-            if current_time - last_typing_time >= 3:
-                try:
-                    await original_message.chat.send_action(action="typing")
-                    last_typing_time = current_time
-                    logger.debug(f"Typing indicator refreshed (chunk {chunk_count})")
-                except Exception as e:
-                    logger.warning(f"Failed to refresh typing: {e}")
+            should_update = (
+                len(full_response) - last_update_length >= 25 or  # Каждые 25 символов
+                (len(chunk_buffer) > 50 and current_time - last_update_time >= 1.0)  # Или раз в секунду
+            )
 
+            if should_update:
+                if sent_message is None:
+                    # Первая отправка - когда накопилось хотя бы 30 символов
+                    if len(full_response.strip()) >= 30:
+                        try:
+                            sent_message = await original_message.reply_text(full_response)
+                            last_update_length = len(full_response)
+                            last_update_time = current_time
+                            chunk_buffer = ""
+                            logger.debug(f"Initial message sent: {len(full_response)} chars")
+                        except Exception as e:
+                            logger.warning(f"Failed to send initial message: {e}")
+                else:
+                    # Обновляем существующее сообщение
+                    try:
+                        await sent_message.edit_text(full_response)
+                        last_update_length = len(full_response)
+                        last_update_time = current_time
+                        chunk_buffer = ""
+                        logger.debug(f"Message updated: {len(full_response)} chars")
+                    except Exception as e:
+                        # Telegram rate limit - просто пропускаем это обновление
+                        logger.debug(f"Skipped update (rate limit): {e}")
+                        pass
+
+        # Финальное обновление с полным текстом
         generation_time = time.time() - start_generation
-        logger.info(f"Response generated in {generation_time:.2f}s ({chunk_count} chunks, {len(full_response)} chars)")
+        logger.info(f"Response generated in {generation_time:.2f}s ({len(full_response)} chars)")
 
-        # Отправляем готовый ответ ОДИН РАЗ
-        if full_response.strip():
-            await original_message.reply_text(full_response)
+        if sent_message:
+            try:
+                await sent_message.edit_text(full_response)
+                logger.debug("Final message update sent")
+            except Exception:
+                pass
         else:
-            # Fallback если ответ пустой
-            await original_message.reply_text("Извините, не удалось получить ответ. Попробуйте еще раз.")
+            # Если текст был слишком коротким для постепенного вывода
+            await original_message.reply_text(full_response)
 
         # Сохраняем ответ ассистента
         database.db.add_message(user_data['id'], 'assistant', full_response)
@@ -1223,9 +1250,12 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         # Получаем историю диалога
         conversation_history = database.db.get_conversation_history(user)
 
-        # Получаем ответ от AI с правильным streaming
+        # Получаем ответ от AI с постепенным streaming (как в GPT)
         full_response = ""
-        last_typing_time = 0
+        sent_message = None
+        chunk_buffer = ""
+        last_update_length = 0
+        last_update_time = 0
 
         # Показываем typing в начале
         try:
@@ -1234,34 +1264,80 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 action="typing",
                 business_connection_id=message.business_connection_id
             )
-            last_typing_time = time.time()
-            logger.info(f"[Business] Typing indicator sent (initial) for user {user_id}")
+            logger.info(f"[Business] Typing indicator sent for user {user_id}")
         except Exception as e:
             logger.warning(f"[Business] Failed to send typing indicator: {e}")
 
-        # Собираем весь ответ от OpenAI streaming
-        chunk_count = 0
+        # Собираем ответ от OpenAI и постепенно обновляем сообщение
         start_generation = time.time()
         async for chunk in ai_brain.ai_brain.generate_response_stream(conversation_history):
             full_response += chunk
-            chunk_count += 1
+            chunk_buffer += chunk
 
-            # Обновляем typing ЧАЩЕ - каждые 3 секунды (typing живет только 5 сек в Telegram)
+            # Обновляем сообщение когда накопилось достаточно новых символов
+            # ИЛИ прошло достаточно времени (для избежания rate limit)
             current_time = time.time()
-            if current_time - last_typing_time >= 3:
-                try:
-                    await context.bot.send_chat_action(
-                        chat_id=message.chat.id,
-                        action="typing",
-                        business_connection_id=message.business_connection_id
-                    )
-                    last_typing_time = current_time
-                    logger.debug(f"[Business] Typing indicator refreshed (chunk {chunk_count})")
-                except Exception as e:
-                    logger.warning(f"[Business] Failed to refresh typing: {e}")
+            should_update = (
+                len(full_response) - last_update_length >= 25 or  # Каждые 25 символов
+                (len(chunk_buffer) > 50 and current_time - last_update_time >= 1.0)  # Или раз в секунду
+            )
 
+            if should_update:
+                if sent_message is None:
+                    # Первая отправка - когда накопилось хотя бы 30 символов
+                    if len(full_response.strip()) >= 30:
+                        try:
+                            sent_message = await context.bot.send_message(
+                                chat_id=message.chat.id,
+                                text=full_response,
+                                business_connection_id=message.business_connection_id
+                            )
+                            last_update_length = len(full_response)
+                            last_update_time = current_time
+                            chunk_buffer = ""
+                            logger.debug(f"[Business] Initial message sent: {len(full_response)} chars")
+                        except Exception as e:
+                            logger.warning(f"[Business] Failed to send initial message: {e}")
+                else:
+                    # Обновляем существующее сообщение
+                    try:
+                        await context.bot.edit_message_text(
+                            chat_id=message.chat.id,
+                            message_id=sent_message.message_id,
+                            text=full_response,
+                            business_connection_id=message.business_connection_id
+                        )
+                        last_update_length = len(full_response)
+                        last_update_time = current_time
+                        chunk_buffer = ""
+                        logger.debug(f"[Business] Message updated: {len(full_response)} chars")
+                    except Exception as e:
+                        # Telegram rate limit - просто пропускаем это обновление
+                        logger.debug(f"[Business] Skipped update (rate limit): {e}")
+                        pass
+
+        # Финальное обновление с полным текстом
         generation_time = time.time() - start_generation
-        logger.info(f"[Business] Response generated in {generation_time:.2f}s ({chunk_count} chunks, {len(full_response)} chars)")
+        logger.info(f"[Business] Response generated in {generation_time:.2f}s ({len(full_response)} chars)")
+
+        if sent_message:
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=sent_message.message_id,
+                    text=full_response,
+                    business_connection_id=message.business_connection_id
+                )
+                logger.debug("[Business] Final message update sent")
+            except Exception:
+                pass
+        else:
+            # Если текст был слишком коротким для постепенного вывода
+            await context.bot.send_message(
+                chat_id=message.chat.id,
+                text=full_response,
+                business_connection_id=message.business_connection_id
+            )
 
         # Сохраняем ответ
         database.db.add_message(user, 'assistant', full_response)
@@ -1300,15 +1376,8 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                         reply_markup=reply_markup,
                         business_connection_id=message.business_connection_id
                     )
-        
-        # Отправляем ответ
-        await context.bot.send_message(
-            chat_id=message.chat.id,
-            text=full_response if full_response else "❌ Не удалось получить ответ",
-            business_connection_id=message.business_connection_id
-        )
-        
-        logger.info(f"✅ Business response sent to {user_id}")
+
+        logger.info(f"✅ [Business] Response sent to user {user_id}")
         
     except Exception as e:
         logger.error(f"Error in handle_business_message: {e}", exc_info=True)
