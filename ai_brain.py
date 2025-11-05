@@ -46,11 +46,11 @@ class AIBrain:
             logger.debug(f"Sending streaming request to OpenAI with {len(messages)} messages")
 
             # Запрос к OpenAI с включенным streaming
-            # max_tokens увеличен до 16000 для избежания обрывов
+            # ВАЖНО: max_completion_tokens = лимит ТОЛЬКО на ответ (не включает prompt и историю!)
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=16000,  # Увеличено! gpt-4o-mini поддерживает до 16k output
+                max_completion_tokens=16000,  # Гарантирует 16K токенов для ОТВЕТА
                 temperature=self.temperature,
                 stream=True  # Включаем потоковую передачу!
             )
@@ -103,10 +103,11 @@ class AIBrain:
             logger.debug(f"Sending request to OpenAI with {len(messages)} messages")
 
             # Запрос к OpenAI
+            # ВАЖНО: max_completion_tokens = лимит ТОЛЬКО на ответ (не включает prompt!)
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=16000,  # Увеличено для избежания обрывов
+                max_completion_tokens=16000,  # Гарантирует 16K токенов для ОТВЕТА
                 temperature=self.temperature
             )
 
