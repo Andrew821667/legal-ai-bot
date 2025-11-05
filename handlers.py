@@ -294,10 +294,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик текстовых сообщений"""
     try:
         user = update.effective_user
-        message_text = update.message.text
+        message_text = update.effective_message.text
 
         # 🛡️ ЗАЩИТА: проверяем что это текстовое сообщение
-        if not update.message or not update.message.text:
+        if not update.effective_message or not update.effective_message.text:
             logger.warning(f"Skipping non-text message update type: {update.update_id}")
             return
 
@@ -307,7 +307,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         is_allowed, block_reason = security.security_manager.check_all_security(user.id, message_text)
         if not is_allowed:
             logger.warning(f"Security check failed for user {user.id}: {block_reason}")
-            await update.message.reply_text(block_reason)
+            await update.effective_message.reply_text(block_reason)
             return
 
         # Получаем или создаем пользователя
@@ -343,7 +343,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if user.id == config.ADMIN_TELEGRAM_ID:
                 await show_admin_panel(update, context)
             else:
-                await update.message.reply_text("У вас нет доступа к этой функции")
+                await update.effective_message.reply_text("У вас нет доступа к этой функции")
             return
 
         # Проверяем триггеры передачи админу
@@ -358,7 +358,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conversation_history = database.db.get_conversation_history(user_data['id'])
 
         # Генерируем ответ через AI с потоковой передачей (streaming)
-        await update.message.chat.send_action(action="typing")
+        try:
+            await update.effective_message.chat.send_action(action="typing")
+        except Exception:
+            pass  # send_action может быть недоступна для бизнес-сообщений
 
         full_response = ""
         sent_message = None
@@ -367,18 +370,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         last_typing_time = 0  # Для контроля частоты send_action
 
         # Получаем поток ответа напрямую от OpenAI
+        # Сохраняем message объект для потокового обновления
+        original_message = update.effective_message
+
         async for chunk in ai_brain.ai_brain.generate_response_stream(conversation_history):
             full_response += chunk
             chunk_buffer += chunk
 
-            # Показываем typing НЕ ЧАЩЕ чем раз в 5 секунд (Telegram лимит)
-            current_time = time.time()
-            if current_time - last_typing_time >= 5:
-                try:
-                    await update.message.chat.send_action(action="typing")
-                    last_typing_time = current_time
-                except Exception:
-                    pass  # Игнорируем ошибки flood control
+            # Отключаем send_action для бизнес-сообщений (вызывает 429 ошибку)
+            # current_time = time.time()
+            # if current_time - last_typing_time >= 5:
+            #     try:
+            #         await original_message.chat.send_action(action="typing")
+            #         last_typing_time = current_time
+            #     except Exception:
+            #         pass  # Игнорируем ошибки flood control
 
             # Обновляем сообщение когда накопилось достаточно новых символов
             should_update = len(full_response) - last_update_length >= 15
@@ -387,7 +393,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if sent_message is None:
                     # Первая отправка - когда накопилось хотя бы 20 символов
                     if len(full_response.strip()) >= 20:
-                        sent_message = await update.message.reply_text(full_response)
+                        sent_message = await original_message.reply_text(full_response)
                         last_update_length = len(full_response)
                         chunk_buffer = ""
                 else:
@@ -407,7 +413,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
         else:
             # Если текст был слишком коротким для постепенного вывода
-            await update.message.reply_text(full_response)
+            await original_message.reply_text(full_response)
 
         # Сохраняем ответ ассистента
         database.db.add_message(user_data['id'], 'assistant', full_response)
@@ -462,12 +468,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
 
     except Exception as e:
-        logger.error(f"Error in handle_message: {e}")
-        await update.message.reply_text(
-            "Извините, произошла ошибка. Попробуйте еще раз или свяжитесь с нами напрямую:\n"
-            "📞 +7 (909) 233-09-09\n"
-            "📧 a.popov.gv@gmail.com"
-        )
+        # Пропускаем Peer_id_invalid - нормально для бизнес-сообщений
+        if "Peer_id_invalid" not in str(e):
+            logger.error(f"Error in handle_message: {e}")
+            # НЕ пытаемся отправлять ошибки - может быть None или уже отправлено
 
 
 async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE, button_text: str):
@@ -1154,6 +1158,8 @@ async def notify_admin_new_lead(context, lead_id: int, lead_data: dict, user_dat
         database.db.mark_lead_notification_sent(lead_id)
 
         logger.info(f"Lead notification sent to chat {target_chat_id} for lead {lead_id}")
+        except Exception as e:
+            logger.error(f"Error in send_lead_notification: {e}")
 
         # Отправляем на email (если настроен SMTP)
         if config.SMTP_USER and config.SMTP_PASSWORD:

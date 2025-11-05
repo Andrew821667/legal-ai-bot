@@ -16,14 +16,15 @@ class AdminInterface:
             
             message = f"📋 СПИСОК ЛИДОВ ({len(leads)})\n\n"
             for i, lead in enumerate(leads, 1):
-                name = lead[2] if len(lead) > 2 else 'N/A'
-                company = lead[5] if len(lead) > 5 else ''
-                temp = lead[12] if len(lead) > 12 else 'unknown'
+                # lead - это dict, получаем значения безопасно
+                name = lead.get('name', 'N/A') or lead.get('full_name', 'N/A')
+                company = lead.get('company', '')
+                temp = lead.get('temperature', 'unknown')
                 emoji = {'hot': '🔥', 'warm': '♨️', 'cold': '❄️'}.get(temp, '❓')
                 message += f"{i}. {emoji} {name} ({company})\n"
             return message
         except Exception as e:
-            logger.error(f"Error: {e}")
+            logger.error(f"Error in format_leads_list: {e}", exc_info=True)
             return f"❌ Ошибка: {e}"
     
     def format_statistics(self, days=30):
@@ -75,4 +76,11 @@ class AdminInterface:
     def send_admin_notification(self, *args, **kwargs):
         pass
 
-admin_interface = None
+# Инициализируем глобальный объект
+try:
+    from database import Database
+    _db = Database()
+    admin_interface = AdminInterface(_db)
+except Exception as e:
+    print(f"Warning: Could not initialize admin_interface: {e}")
+    admin_interface = None

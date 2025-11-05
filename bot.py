@@ -6,6 +6,7 @@ import handlers
 import admin_interface
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+from telegram.ext import BaseHandler, TypeHandler
 import config
 
 logging.basicConfig(
@@ -41,7 +42,9 @@ def main():
         application.add_handler(CallbackQueryHandler(handlers.handle_admin_panel_callback, pattern="^admin_"))
         application.add_handler(CallbackQueryHandler(handlers.handle_cleanup_callback, pattern="^cleanup_"))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_message))
-        
+
+        # Поддержка бизнес-сообщений - обработчик без фильтра ~COMMAND
+        application.add_handler(MessageHandler(filters.TEXT, handlers.handle_business_message))        
         logger.info("Registering admin handlers...")
         application.add_handler(CommandHandler("stats", handlers.stats_command))
         application.add_handler(CommandHandler("leads", handlers.leads_command))

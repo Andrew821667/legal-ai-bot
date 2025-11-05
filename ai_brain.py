@@ -34,10 +34,13 @@ class AIBrain:
             # Преобразуем историю в формат OpenAI
             messages = [{"role": "system", "content": prompts.SYSTEM_PROMPT}]
 
-            for msg in conversation_history:
+            # Ограничиваем контекст последними 20 сообщениями для избежания обрывов
+            limited_history = conversation_history[-20:] if len(conversation_history) > 20 else conversation_history
+            
+            for msg in limited_history:
                 messages.append({
                     "role": msg["role"],
-                    "content": msg["message"]
+                    "content": msg.get("content") or msg.get("message")
                 })
 
             logger.debug(f"Sending streaming request to OpenAI with {len(messages)} messages")
@@ -46,7 +49,7 @@ class AIBrain:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=self.max_tokens,
+                max_tokens=min(self.max_tokens * 2, 8000),  # Увеличиваем для streaming
                 temperature=self.temperature,
                 stream=True  # Включаем потоковую передачу!
             )
@@ -76,10 +79,13 @@ class AIBrain:
             # Преобразуем историю в формат OpenAI
             messages = [{"role": "system", "content": prompts.SYSTEM_PROMPT}]
 
-            for msg in conversation_history:
+            # Ограничиваем контекст последними 20 сообщениями для избежания обрывов
+            limited_history = conversation_history[-20:] if len(conversation_history) > 20 else conversation_history
+            
+            for msg in limited_history:
                 messages.append({
                     "role": msg["role"],
-                    "content": msg["message"]
+                    "content": msg.get("content") or msg.get("message")
                 })
 
             logger.debug(f"Sending request to OpenAI with {len(messages)} messages")

@@ -252,8 +252,21 @@ class Database:
         cursor = conn.cursor()
 
         try:
-            # Проверяем существует ли уже лид для этого пользователя
-            cursor.execute("SELECT id FROM leads WHERE user_id = ?", (user_id,))
+            # Проверяем уникальность по компании и email
+            # Если изменилась компания или email = это НОВЫЙ лид!
+            company = lead_data.get('company')
+            email = lead_data.get('email')
+            
+            # Ищем существующий лид с ТЕМ ЖЕ company + email
+            if company and email:
+                cursor.execute(
+                    "SELECT id FROM leads WHERE user_id = ? AND company = ? AND email = ?",
+                    (user_id, company, email)
+                )
+            else:
+                # Если нет компании или email, ищем по user_id
+                cursor.execute("SELECT id FROM leads WHERE user_id = ? ORDER BY created_at DESC LIMIT 1", (user_id,))
+            
             existing = cursor.fetchone()
 
             if existing:
