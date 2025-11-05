@@ -367,21 +367,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await original_message.chat.send_action(action="typing")
             last_typing_time = time.time()
-        except Exception:
-            pass  # send_action может быть недоступна для некоторых типов сообщений
+            logger.info(f"Typing indicator sent (initial) for user {user_data['telegram_id']}")
+        except Exception as e:
+            logger.warning(f"Failed to send typing indicator: {e}")
 
         # Собираем весь ответ от OpenAI streaming
+        chunk_count = 0
+        start_generation = time.time()
         async for chunk in ai_brain.ai_brain.generate_response_stream(conversation_history):
             full_response += chunk
+            chunk_count += 1
 
-            # Периодически обновляем typing индикатор (каждые 5 секунд)
+            # Обновляем typing ЧАЩЕ - каждые 3 секунды (typing живет только 5 сек в Telegram)
             current_time = time.time()
-            if current_time - last_typing_time >= 5:
+            if current_time - last_typing_time >= 3:
                 try:
                     await original_message.chat.send_action(action="typing")
                     last_typing_time = current_time
-                except Exception:
-                    pass  # Игнорируем ошибки (rate limit, недоступность и т.д.)
+                    logger.debug(f"Typing indicator refreshed (chunk {chunk_count})")
+                except Exception as e:
+                    logger.warning(f"Failed to refresh typing: {e}")
+
+        generation_time = time.time() - start_generation
+        logger.info(f"Response generated in {generation_time:.2f}s ({chunk_count} chunks, {len(full_response)} chars)")
 
         # Отправляем готовый ответ ОДИН РАЗ
         if full_response.strip():
@@ -1227,16 +1235,20 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 business_connection_id=message.business_connection_id
             )
             last_typing_time = time.time()
-        except Exception:
-            pass
+            logger.info(f"[Business] Typing indicator sent (initial) for user {user_id}")
+        except Exception as e:
+            logger.warning(f"[Business] Failed to send typing indicator: {e}")
 
         # Собираем весь ответ от OpenAI streaming
+        chunk_count = 0
+        start_generation = time.time()
         async for chunk in ai_brain.ai_brain.generate_response_stream(conversation_history):
             full_response += chunk
+            chunk_count += 1
 
-            # Периодически обновляем typing индикатор (каждые 5 секунд)
+            # Обновляем typing ЧАЩЕ - каждые 3 секунды (typing живет только 5 сек в Telegram)
             current_time = time.time()
-            if current_time - last_typing_time >= 5:
+            if current_time - last_typing_time >= 3:
                 try:
                     await context.bot.send_chat_action(
                         chat_id=message.chat.id,
@@ -1244,9 +1256,13 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                         business_connection_id=message.business_connection_id
                     )
                     last_typing_time = current_time
-                except Exception:
-                    pass  # Игнорируем ошибки
-        
+                    logger.debug(f"[Business] Typing indicator refreshed (chunk {chunk_count})")
+                except Exception as e:
+                    logger.warning(f"[Business] Failed to refresh typing: {e}")
+
+        generation_time = time.time() - start_generation
+        logger.info(f"[Business] Response generated in {generation_time:.2f}s ({chunk_count} chunks, {len(full_response)} chars)")
+
         # Сохраняем ответ
         database.db.add_message(user, 'assistant', full_response)
         
