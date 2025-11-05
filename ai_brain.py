@@ -46,20 +46,32 @@ class AIBrain:
             logger.debug(f"Sending streaming request to OpenAI with {len(messages)} messages")
 
             # Запрос к OpenAI с включенным streaming
+            # max_tokens увеличен до 16000 для избежания обрывов
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=min(self.max_tokens * 2, 8000),  # Увеличиваем для streaming
+                max_tokens=16000,  # Увеличено! gpt-4o-mini поддерживает до 16k output
                 temperature=self.temperature,
                 stream=True  # Включаем потоковую передачу!
             )
 
             # Отдаем части ответа по мере их поступления
+            finish_reason = None
             for chunk in response:
                 if chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
 
-            logger.info("Streaming response completed")
+                # Проверяем причину завершения
+                if chunk.choices[0].finish_reason:
+                    finish_reason = chunk.choices[0].finish_reason
+
+            # Логируем причину завершения
+            if finish_reason == "length":
+                logger.warning("⚠️ Response was truncated due to max_tokens limit!")
+            elif finish_reason == "stop":
+                logger.info("✓ Streaming response completed normally (stop)")
+            else:
+                logger.info(f"Streaming response completed (finish_reason: {finish_reason})")
 
         except Exception as e:
             logger.error(f"Error generating streaming response: {e}")
@@ -94,12 +106,18 @@ class AIBrain:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=self.max_tokens,
+                max_tokens=16000,  # Увеличено для избежания обрывов
                 temperature=self.temperature
             )
 
             assistant_message = response.choices[0].message.content
-            logger.info(f"Received response from OpenAI: {len(assistant_message)} chars")
+            finish_reason = response.choices[0].finish_reason
+
+            # Предупреждение если ответ обрезан
+            if finish_reason == "length":
+                logger.warning(f"⚠️ Response truncated! ({len(assistant_message)} chars, finish_reason: length)")
+            else:
+                logger.info(f"Received response from OpenAI: {len(assistant_message)} chars (finish_reason: {finish_reason})")
 
             return assistant_message
 
