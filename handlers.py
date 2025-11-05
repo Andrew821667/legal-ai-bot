@@ -939,10 +939,22 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
             result = subprocess.run(['tail', '-50', config.LOG_FILE], capture_output=True, text=True)
             logs = result.stdout
 
-            if len(logs) > 4000:
-                logs = logs[-4000:]  # Telegram limit
+            # Добавляем цветные индикаторы для ошибок и предупреждений
+            formatted_lines = []
+            for line in logs.split('\n'):
+                if ' - ERROR - ' in line:
+                    formatted_lines.append(f"🔴 {line}")  # Красный индикатор для ошибок
+                elif ' - WARNING - ' in line:
+                    formatted_lines.append(f"⚠️ {line}")  # Желтый индикатор для предупреждений
+                else:
+                    formatted_lines.append(line)
 
-            await query.message.reply_text(f"📋 ПОСЛЕДНИЕ ЛОГИ:\n\n```\n{logs}\n```", parse_mode="Markdown")
+            formatted_logs = '\n'.join(formatted_lines)
+
+            if len(formatted_logs) > 4000:
+                formatted_logs = formatted_logs[-4000:]  # Telegram limit
+
+            await query.message.reply_text(f"📋 ПОСЛЕДНИЕ ЛОГИ:\n\n```\n{formatted_logs}\n```", parse_mode="Markdown")
 
         elif action == "admin_export":
             # Экспорт лидов в CSV
