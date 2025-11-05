@@ -17,10 +17,12 @@ ENV/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
+*.db  # БД в корне тоже игнорировать
 
 # Логи
 logs/*.log
 logs/*.txt
+logs/*.backup*  # Backup'ы логов
 
 # IDE
 .vscode/

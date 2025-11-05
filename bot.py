@@ -38,13 +38,20 @@ def main():
         application.add_handler(CommandHandler("help", handlers.help_command))
         application.add_handler(CommandHandler("reset", handlers.reset_command))
         
-        logger.info("Registering business handlers...")
+        logger.info("Registering callback handlers...")
         application.add_handler(CallbackQueryHandler(handlers.handle_admin_panel_callback, pattern="^admin_"))
         application.add_handler(CallbackQueryHandler(handlers.handle_cleanup_callback, pattern="^cleanup_"))
+
+        logger.info("Registering message handlers...")
+        # Обычные сообщения (НЕ команды, НЕ бизнес)
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_message))
 
-        # Поддержка бизнес-сообщений - обработчик без фильтра ~COMMAND
-        application.add_handler(MessageHandler(filters.TEXT, handlers.handle_business_message))        
+        logger.info("Registering business handlers...")
+        # Business connection (подключение/отключение Business аккаунта)
+        application.add_handler(TypeHandler(Update, handlers.handle_business_connection, block=False), group=1)
+        # Business messages (сообщения через Business аккаунт)
+        application.add_handler(TypeHandler(Update, handlers.handle_business_message, block=False), group=1)
+
         logger.info("Registering admin handlers...")
         application.add_handler(CommandHandler("stats", handlers.stats_command))
         application.add_handler(CommandHandler("leads", handlers.leads_command))

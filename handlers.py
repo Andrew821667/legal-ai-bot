@@ -357,63 +357,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Получаем историю диалога
         conversation_history = database.db.get_conversation_history(user_data['id'])
 
-        # Генерируем ответ через AI с потоковой передачей (streaming)
-        try:
-            await update.effective_message.chat.send_action(action="typing")
-        except Exception:
-            pass  # send_action может быть недоступна для бизнес-сообщений
-
+        # Генерируем ответ через AI с правильным streaming
+        # Используем typing индикатор вместо постоянного edit_text
         full_response = ""
-        sent_message = None
-        chunk_buffer = ""
-        last_update_length = 0
-        last_typing_time = 0  # Для контроля частоты send_action
-
-        # Получаем поток ответа напрямую от OpenAI
-        # Сохраняем message объект для потокового обновления
+        last_typing_time = 0
         original_message = update.effective_message
 
+        # Показываем typing индикатор в начале
+        try:
+            await original_message.chat.send_action(action="typing")
+            last_typing_time = time.time()
+        except Exception:
+            pass  # send_action может быть недоступна для некоторых типов сообщений
+
+        # Собираем весь ответ от OpenAI streaming
         async for chunk in ai_brain.ai_brain.generate_response_stream(conversation_history):
             full_response += chunk
-            chunk_buffer += chunk
 
-            # Отключаем send_action для бизнес-сообщений (вызывает 429 ошибку)
-            # current_time = time.time()
-            # if current_time - last_typing_time >= 5:
-            #     try:
-            #         await original_message.chat.send_action(action="typing")
-            #         last_typing_time = current_time
-            #     except Exception:
-            #         pass  # Игнорируем ошибки flood control
+            # Периодически обновляем typing индикатор (каждые 5 секунд)
+            current_time = time.time()
+            if current_time - last_typing_time >= 5:
+                try:
+                    await original_message.chat.send_action(action="typing")
+                    last_typing_time = current_time
+                except Exception:
+                    pass  # Игнорируем ошибки (rate limit, недоступность и т.д.)
 
-            # Обновляем сообщение когда накопилось достаточно новых символов
-            should_update = len(full_response) - last_update_length >= 15
-
-            if should_update or len(chunk_buffer) > 40:
-                if sent_message is None:
-                    # Первая отправка - когда накопилось хотя бы 20 символов
-                    if len(full_response.strip()) >= 20:
-                        sent_message = await original_message.reply_text(full_response)
-                        last_update_length = len(full_response)
-                        chunk_buffer = ""
-                else:
-                    # Обновляем существующее сообщение
-                    try:
-                        await sent_message.edit_text(full_response)
-                        last_update_length = len(full_response)
-                        chunk_buffer = ""
-                    except Exception:
-                        pass  # Telegram rate limit, пропускаем
-
-        # Финальное обновление с полным текстом
-        if sent_message:
-            try:
-                await sent_message.edit_text(full_response)
-            except Exception:
-                pass
-        else:
-            # Если текст был слишком коротким для постепенного вывода
+        # Отправляем готовый ответ ОДИН РАЗ
+        if full_response.strip():
             await original_message.reply_text(full_response)
+        else:
+            # Fallback если ответ пустой
+            await original_message.reply_text("Извините, не удалось получить ответ. Попробуйте еще раз.")
 
         # Сохраняем ответ ассистента
         database.db.add_message(user_data['id'], 'assistant', full_response)
@@ -1158,8 +1133,6 @@ async def notify_admin_new_lead(context, lead_id: int, lead_data: dict, user_dat
         database.db.mark_lead_notification_sent(lead_id)
 
         logger.info(f"Lead notification sent to chat {target_chat_id} for lead {lead_id}")
-        except Exception as e:
-            logger.error(f"Error in send_lead_notification: {e}")
 
         # Отправляем на email (если настроен SMTP)
         if config.SMTP_USER and config.SMTP_PASSWORD:
@@ -1241,18 +1214,38 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         
         # Получаем историю диалога
         conversation_history = database.db.get_conversation_history(user)
-        
-        # Отправляем "печатает..."
-        await context.bot.send_chat_action(
-            chat_id=message.chat.id,
-            action="typing",
-            business_connection_id=message.business_connection_id
-        )
-        
-        # Получаем ответ от AI
+
+        # Получаем ответ от AI с правильным streaming
         full_response = ""
+        last_typing_time = 0
+
+        # Показываем typing в начале
+        try:
+            await context.bot.send_chat_action(
+                chat_id=message.chat.id,
+                action="typing",
+                business_connection_id=message.business_connection_id
+            )
+            last_typing_time = time.time()
+        except Exception:
+            pass
+
+        # Собираем весь ответ от OpenAI streaming
         async for chunk in ai_brain.ai_brain.generate_response_stream(conversation_history):
             full_response += chunk
+
+            # Периодически обновляем typing индикатор (каждые 5 секунд)
+            current_time = time.time()
+            if current_time - last_typing_time >= 5:
+                try:
+                    await context.bot.send_chat_action(
+                        chat_id=message.chat.id,
+                        action="typing",
+                        business_connection_id=message.business_connection_id
+                    )
+                    last_typing_time = current_time
+                except Exception:
+                    pass  # Игнорируем ошибки
         
         # Сохраняем ответ
         database.db.add_message(user, 'assistant', full_response)
