@@ -302,15 +302,22 @@ async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(
-            "📋 МЕНЮ УСЛУГ:\n\nВыберите интересующую тему:",
-            reply_markup=reply_markup
-        )
-        logger.info(f"Menu shown to user {update.effective_user.id}")
+        # Используем effective_message вместо message (может быть None)
+        message = update.effective_message
+        if message:
+            await message.reply_text(
+                "📋 МЕНЮ УСЛУГ:\n\nВыберите интересующую тему:",
+                reply_markup=reply_markup
+            )
+            logger.info(f"Menu shown to user {update.effective_user.id}")
         
     except Exception as e:
         logger.error(f"Error in menu_command: {e}")
-        await update.message.reply_text("Произошла ошибка. Попробуйте /start")
+        try:
+            if update.effective_message:
+                await update.effective_message.reply_text("Произошла ошибка. Попробуйте /start")
+        except:
+            pass
 
 
 async def handle_business_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
