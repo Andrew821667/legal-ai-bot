@@ -99,33 +99,29 @@ class AIBrain:
             # === RAG: ИЩЕМ ПОХОЖИЕ УСПЕШНЫЕ ДИАЛОГИ ===
             rag_context = ""
             try:
-                # ВРЕМЕННО ОТКЛЮЧЕНО - требует numpy на сервере
-                # TODO: включить после установки numpy на сервере
-                pass
-                
                 # Получаем последнее сообщение клиента
-                # last_user_message = next(
-                #     (msg['message'] for msg in reversed(limited_history) if msg['role'] == 'user'),
-                #     None
-                # )
-                # 
-                # if last_user_message and len(last_user_message) > 10:
-                #     # Получаем успешные диалоги из БД
-                #     successful_convos = database.db.get_successful_conversations(limit=30)
-                #     
-                #     if successful_convos:
-                #         # Ищем похожие через семантический поиск
-                #         similar = knowledge_engine.knowledge_engine.find_similar_conversations(
-                #             query=last_user_message,
-                #             conversations=successful_convos,
-                #             top_k=2,  # Топ-2 похожих примера
-                #             min_similarity=0.6  # Минимальное сходство 60%
-                #         )
-                #         
-                #         if similar:
-                #             # Форматируем примеры для промпта
-                #             rag_context = knowledge_engine.knowledge_engine.format_similar_examples_for_prompt(similar)
-                #             logger.info(f"📚 RAG: Found {len(similar)} similar conversations, adding to context")
+                last_user_message = next(
+                    (msg['message'] for msg in reversed(limited_history) if msg['role'] == 'user'),
+                    None
+                )
+                
+                if last_user_message and len(last_user_message) > 10:
+                    # Получаем успешные диалоги из БД
+                    successful_convos = database.db.get_successful_conversations(limit=30)
+                    
+                    if successful_convos:
+                        # Ищем похожие через семантический поиск
+                        similar = knowledge_engine.knowledge_engine.find_similar_conversations(
+                            query=last_user_message,
+                            conversations=successful_convos,
+                            top_k=2,  # Топ-2 похожих примера
+                            min_similarity=0.6  # Минимальное сходство 60%
+                        )
+                        
+                        if similar:
+                            # Форматируем примеры для промпта
+                            rag_context = knowledge_engine.knowledge_engine.format_similar_examples_for_prompt(similar)
+                            logger.info(f"📚 RAG: Found {len(similar)} similar conversations, adding to context")
             
             except Exception as e:
                 logger.warning(f"RAG search failed (non-critical): {e}")

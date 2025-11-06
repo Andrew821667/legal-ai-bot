@@ -116,8 +116,12 @@ def main():
         logger.info("Setting up background jobs...")
         # Запускаем background job для проверки лидов (каждые 2 минуты)
         job_queue = application.job_queue
-        job_queue.run_repeating(check_pending_leads_job, interval=120, first=60)
-        logger.info("Background job 'check_pending_leads' scheduled (every 2 minutes)")
+        if job_queue:
+            job_queue.run_repeating(check_pending_leads_job, interval=120, first=60)
+            logger.info("Background job 'check_pending_leads' scheduled (every 2 minutes)")
+        else:
+            logger.warning("⚠️ JobQueue not available. Install via: pip install 'python-telegram-bot[job-queue]'")
+            logger.warning("⚠️ Delayed lead notifications will NOT work without JobQueue")
         
         logger.info("All handlers registered successfully")
         logger.info("Starting bot polling...")
