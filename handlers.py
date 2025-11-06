@@ -1208,16 +1208,26 @@ async def notify_admin_new_lead(context, lead_id: int, lead_data: dict, user_dat
             
             notification_message += "\n"
         
-        # Остальные детали
-        notification_message += (
-            f"📊 Детали:\n"
-            f"• Юристов: {lead.get('team_size') or 'Не указано'}\n"
-            f"• Договоров/мес: {lead.get('contracts_per_month') or 'Не указано'}\n"
-            f"• Бюджет: {lead.get('budget') or 'Не указан'}\n"
-            f"• Срочность: {lead.get('urgency') or 'Не указана'}\n\n"
-            f"💭 Боль: {lead.get('pain_point') or 'Не указана'}\n\n"
-            f"🌡️ Температура: {temperature.upper()}"
-        )
+        # Остальные детали - ТОЛЬКО ЕСЛИ ЕСТЬ ДАННЫЕ
+        details = []
+        if lead.get('team_size'):
+            details.append(f"• Юристов: {lead.get('team_size')}")
+        if lead.get('contracts_per_month'):
+            details.append(f"• Договоров/мес: {lead.get('contracts_per_month')}")
+        if lead.get('budget'):
+            details.append(f"• Бюджет: {lead.get('budget')}")
+        if lead.get('urgency'):
+            urgency_emoji = {'high': '🔥', 'medium': '⏱️', 'low': '🐌'}.get(lead.get('urgency'), '')
+            details.append(f"• Срочность: {urgency_emoji} {lead.get('urgency')}")
+        
+        if details:
+            notification_message += "📊 Детали:\n" + "\n".join(details) + "\n\n"
+        
+        # Боль и температура
+        if lead.get('pain_point'):
+            notification_message += f"💭 Боль: {lead.get('pain_point')}\n\n"
+        
+        notification_message += f"🌡️ Температура: {temperature.upper()}"
 
         # Отправляем в Telegram
         # Если задан LEADS_CHAT_ID - отправляем в отдельный чат, иначе напрямую админу

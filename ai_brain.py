@@ -170,7 +170,11 @@ class AIBrain:
                 response_text = "\n".join(lines[1:-1])
 
             lead_data = json.loads(response_text)
-            logger.info(f"Successfully extracted lead data: temperature={lead_data.get('lead_temperature')}")
+            
+            # ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ для отладки
+            logger.info(f"✅ Lead data extracted: temperature={lead_data.get('lead_temperature')}")
+            logger.info(f"📊 Service: category={lead_data.get('service_category')}, need={lead_data.get('specific_need')}")
+            logger.info(f"🔍 Full lead data: {json.dumps(lead_data, ensure_ascii=False)}")
 
             return lead_data
 
