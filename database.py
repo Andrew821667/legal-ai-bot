@@ -132,6 +132,11 @@ class Database:
             if 'specific_need' not in columns:
                 cursor.execute("ALTER TABLE leads ADD COLUMN specific_need TEXT")
                 logger.info("Added specific_need column to leads table")
+            
+            # Миграция: добавляем last_message_at для отложенного уведомления
+            if 'last_message_at' not in columns:
+                cursor.execute("ALTER TABLE leads ADD COLUMN last_message_at TIMESTAMP")
+                logger.info("Added last_message_at column to leads table")
 
             conn.commit()
             logger.info("Database initialized successfully")
@@ -184,6 +189,22 @@ class Database:
 
         try:
             cursor.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
+            row = cursor.fetchone()
+
+            if row:
+                return dict(row)
+            return None
+
+        finally:
+            conn.close()
+    
+    def get_user_by_id(self, user_id: int) -> Optional[Dict]:
+        """Получение пользователя по user_id"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
             row = cursor.fetchone()
 
             if row:
@@ -402,6 +423,67 @@ class Database:
 
             return [dict(row) for row in rows]
 
+        finally:
+            conn.close()
+    
+    def get_leads_ready_for_notification(self, idle_minutes: int = 5) -> List[Dict]:
+        """
+        Получение лидов готовых к уведомлению:
+        - Прошло idle_minutes минут с последнего сообщения
+        - Уведомление еще не отправлено
+        - Лид теплый или горячий (или есть ключевые данные)
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Ищем лидов где:
+            # 1. last_message_at есть и прошло > idle_minutes минут
+            # 2. notification_sent = 0
+            # 3. Температура warm/hot ИЛИ есть контакты+боль
+            cursor.execute(f"""
+                SELECT * FROM leads
+                WHERE last_message_at IS NOT NULL
+                AND notification_sent = 0
+                AND (
+                    datetime(last_message_at, '+{idle_minutes} minutes') <= datetime('now')
+                )
+                AND (
+                    temperature IN ('warm', 'hot')
+                    OR (
+                        name IS NOT NULL
+                        AND (email IS NOT NULL OR phone IS NOT NULL)
+                        AND pain_point IS NOT NULL
+                    )
+                )
+                ORDER BY last_message_at DESC
+            """)
+            
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+            
+        finally:
+            conn.close()
+    
+    def update_lead_last_message_time(self, user_id: int):
+        """Обновление времени последнего сообщения лида"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                UPDATE leads
+                SET last_message_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+            """, (user_id,))
+            
+            conn.commit()
+            logger.debug(f"Updated last_message_at for user {user_id}")
+            
+        except Exception as e:
+            logger.error(f"Error updating last_message_at: {e}")
+            conn.rollback()
+            raise
         finally:
             conn.close()
 

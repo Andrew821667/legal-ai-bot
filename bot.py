@@ -16,6 +16,59 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Background job для проверки лидов готовых к уведомлению
+async def check_pending_leads_job(context):
+    """
+    Фоновая задача: проверяет лиды у которых прошло 5+ минут с последнего сообщения
+    и отправляет уведомления админу
+    """
+    try:
+        logger.debug("Checking for pending leads ready for notification...")
+        
+        # Получаем лиды готовые к уведомлению (5 минут без новых сообщений)
+        pending_leads = database.db.get_leads_ready_for_notification(idle_minutes=5)
+        
+        if pending_leads:
+            logger.info(f"Found {len(pending_leads)} leads ready for notification")
+            
+            for lead in pending_leads:
+                try:
+                    # Получаем данные пользователя
+                    user_data = database.db.get_user_by_id(lead['user_id'])
+                    
+                    if not user_data:
+                        logger.warning(f"User {lead['user_id']} not found for lead {lead['id']}")
+                        continue
+                    
+                    # Формируем lead_data из сохраненных данных
+                    lead_data = {
+                        'name': lead.get('name'),
+                        'email': lead.get('email'),
+                        'phone': lead.get('phone'),
+                        'company': lead.get('company'),
+                        'team_size': lead.get('team_size'),
+                        'contracts_per_month': lead.get('contracts_per_month'),
+                        'pain_point': lead.get('pain_point'),
+                        'budget': lead.get('budget'),
+                        'urgency': lead.get('urgency'),
+                        'industry': lead.get('industry'),
+                        'service_category': lead.get('service_category'),
+                        'specific_need': lead.get('specific_need'),
+                        'temperature': lead.get('temperature'),
+                        'lead_temperature': lead.get('temperature'),  # для совместимости
+                    }
+                    
+                    # Отправляем уведомление админу
+                    await handlers.notify_admin_new_lead(context, lead['id'], lead_data, user_data)
+                    
+                    logger.info(f"✅ Notification sent for lead {lead['id']} (user {user_data.get('first_name')})")
+                    
+                except Exception as e:
+                    logger.error(f"Error processing lead {lead.get('id')}: {e}", exc_info=True)
+        
+    except Exception as e:
+        logger.error(f"Error in check_pending_leads_job: {e}", exc_info=True)
+
 def main():
     try:
         logger.info("="*50)
@@ -55,6 +108,12 @@ def main():
         logger.info("Registering admin handlers...")
         application.add_handler(CommandHandler("stats", handlers.stats_command))
         application.add_handler(CommandHandler("leads", handlers.leads_command))
+        
+        logger.info("Setting up background jobs...")
+        # Запускаем background job для проверки лидов (каждые 2 минуты)
+        job_queue = application.job_queue
+        job_queue.run_repeating(check_pending_leads_job, interval=120, first=60)
+        logger.info("Background job 'check_pending_leads' scheduled (every 2 minutes)")
         
         logger.info("All handlers registered successfully")
         logger.info("Starting bot polling...")

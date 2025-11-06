@@ -471,25 +471,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 lead_id = lead_qualifier.lead_qualifier.process_lead_data(user_data['id'], lead_data)
 
                 if lead_id:
-                    # 📬 УВЕДОМЛЯЕМ АДМИНА О НОВОМ ЛИДЕ (только если квалифицирован!)
-                    # Отправляем уведомление ТОЛЬКО если:
-                    # 1. Лид горячий или теплый (не холодный)
-                    # 2. ИЛИ собраны ключевые данные (имя + контакт + боль)
+                    # ОБНОВЛЯЕМ ВРЕМЯ ПОСЛЕДНЕГО СООБЩЕНИЯ
+                    database.db.update_lead_last_message_time(user_data['id'])
                     
-                    # ИСПРАВЛЕНИЕ: AI возвращает 'lead_temperature', приводим к 'temperature'
-                    temperature = lead_data.get('temperature') or lead_data.get('lead_temperature', 'cold')
+                    # НЕ ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ СРАЗУ!
+                    # Уведомление отправится автоматически через 5 минут без новых сообщений
+                    # (см. check_pending_leads_job)
                     
-                    should_notify = (
-                        temperature in ['hot', 'warm'] or
-                        (lead_data.get('name') and
-                         (lead_data.get('email') or lead_data.get('phone')) and
-                         lead_data.get('pain_point'))
-                    )
-                    
-                    logger.info(f"Lead {lead_id}: temperature={temperature}, should_notify={should_notify}")
-
-                    if should_notify:
-                        await notify_admin_new_lead(context, lead_id, lead_data, user_data)
+                    logger.info(f"Lead {lead_id} updated, waiting for conversation to finish before notifying admin")
 
                 # Проверяем был ли уже предложен lead magnet
                 existing_lead = database.db.get_lead_by_user_id(user_data['id'])
