@@ -1600,9 +1600,14 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             try:
                 await context.bot.send_message(
                     chat_id=message.chat.id,
-                    text="Выберите интересующую тему:",
+                    text=(
+                        "💡 **Полезная информация:**\n\n"
+                        "Для быстрого доступа к информации используйте кнопки ниже 👇\n\n"
+                        "Также вы всегда можете написать `/menu` чтобы вызвать это меню снова."
+                    ),
                     reply_markup=reply_markup,
-                    business_connection_id=message.business_connection_id
+                    business_connection_id=message.business_connection_id,
+                    parse_mode='Markdown'
                 )
                 logger.info(f"[Business] Menu buttons sent to user {user_id}")
             except Exception as e:
