@@ -1191,14 +1191,32 @@ async def notify_admin_new_lead(context, lead_id: int, lead_data: dict, user_dat
             f"🏢 Компания: {lead.get('company') or 'Не указана'}\n"
             f"📧 Email: {lead.get('email') or 'Не указан'}\n"
             f"📞 Телефон: {lead.get('phone') or 'Не указан'}\n\n"
+        )
+        
+        # Добавляем СПЕЦИАЛИЗАЦИЮ (новое!)
+        if lead.get('service_category') or lead.get('specific_need') or lead.get('industry'):
+            notification_message += "🎯 Специализация:\n"
+            
+            if lead.get('service_category'):
+                notification_message += f"• Направление: {lead.get('service_category')}\n"
+            
+            if lead.get('specific_need'):
+                notification_message += f"• Потребность: {lead.get('specific_need')}\n"
+            
+            if lead.get('industry'):
+                notification_message += f"• Отрасль: {lead.get('industry')}\n"
+            
+            notification_message += "\n"
+        
+        # Остальные детали
+        notification_message += (
             f"📊 Детали:\n"
             f"• Юристов: {lead.get('team_size') or 'Не указано'}\n"
             f"• Договоров/мес: {lead.get('contracts_per_month') or 'Не указано'}\n"
             f"• Бюджет: {lead.get('budget') or 'Не указан'}\n"
             f"• Срочность: {lead.get('urgency') or 'Не указана'}\n\n"
-            f"💭 Боль: {lead.get('pain_point') or 'Не указана'}\n"
-            f"🎯 Интересует: {lead.get('interested_service') or 'Не указано'}\n\n"
-            f"🌡️ Температура: {lead.get('temperature', 'cold').upper()}"
+            f"💭 Боль: {lead.get('pain_point') or 'Не указана'}\n\n"
+            f"🌡️ Температура: {temperature.upper()}"
         )
 
         # Отправляем в Telegram

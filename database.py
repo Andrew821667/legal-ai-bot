@@ -76,6 +76,8 @@ class Database:
                     budget TEXT,
                     urgency TEXT,
                     industry TEXT,
+                    service_category TEXT,
+                    specific_need TEXT,
 
                     temperature TEXT DEFAULT 'cold',
                     status TEXT DEFAULT 'new',
@@ -117,9 +119,19 @@ class Database:
             # Миграция: добавляем notification_sent если его нет
             cursor.execute("PRAGMA table_info(leads)")
             columns = [column[1] for column in cursor.fetchall()]
+            
             if 'notification_sent' not in columns:
                 cursor.execute("ALTER TABLE leads ADD COLUMN notification_sent BOOLEAN DEFAULT 0")
                 logger.info("Added notification_sent column to leads table")
+            
+            # Миграция: добавляем service_category и specific_need
+            if 'service_category' not in columns:
+                cursor.execute("ALTER TABLE leads ADD COLUMN service_category TEXT")
+                logger.info("Added service_category column to leads table")
+            
+            if 'specific_need' not in columns:
+                cursor.execute("ALTER TABLE leads ADD COLUMN specific_need TEXT")
+                logger.info("Added specific_need column to leads table")
 
             conn.commit()
             logger.info("Database initialized successfully")
