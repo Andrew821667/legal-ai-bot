@@ -456,6 +456,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if ai_brain.ai_brain.check_handoff_trigger(message_text):
             await handle_handoff_request(update, context)
             return
+        
+        # Проверка на короткие сообщения-подтверждения (ок, спасибо и т.д.)
+        # Отвечаем коротко без использования AI и НЕ сохраняем в историю
+        short_confirmations = [
+            'ok', 'ок', 'окей', 'okay', 
+            'спасибо', 'благодарю', 'thanks', 'thank you',
+            'пока', 'до свидания', 'bye', 'goodbye',
+            'понятно', 'ясно', 'хорошо', 'got it', 'clear',
+            'да', 'yes', 'нет', 'no'
+        ]
+        
+        # Если сообщение короткое (до 15 символов) и это подтверждение
+        if len(message_text.strip()) <= 15 and message_text.strip().lower() in short_confirmations:
+            await update.effective_message.reply_text(
+                "👍 Рад был помочь! Если возникнут вопросы - обращайтесь!"
+            )
+            return
 
         # Сохраняем сообщение пользователя
         database.db.add_message(user_data['id'], 'user', message_text)
