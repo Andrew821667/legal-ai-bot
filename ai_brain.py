@@ -1,5 +1,5 @@
 """
-AI Brain - интеграция с OpenAI GPT
+AI Brain - интеграция с OpenAI GPT + RAG
 """
 import logging
 from typing import List, Dict, Optional, AsyncGenerator
@@ -7,6 +7,8 @@ import json
 from openai import OpenAI
 import config
 import prompts
+import database
+import knowledge_engine
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +81,7 @@ class AIBrain:
 
     def generate_response(self, conversation_history: List[Dict[str, str]]) -> str:
         """
-        Генерация ответа на основе истории диалога
+        Генерация ответа на основе истории диалога + RAG
 
         Args:
             conversation_history: История диалога в формате [{"role": "user"/"assistant", "message": "..."}]
@@ -94,13 +96,52 @@ class AIBrain:
             # Ограничиваем контекст последними 20 сообщениями для избежания обрывов
             limited_history = conversation_history[-20:] if len(conversation_history) > 20 else conversation_history
             
+            # === RAG: ИЩЕМ ПОХОЖИЕ УСПЕШНЫЕ ДИАЛОГИ ===
+            rag_context = ""
+            try:
+                # Получаем последнее сообщение клиента
+                last_user_message = next(
+                    (msg['message'] for msg in reversed(limited_history) if msg['role'] == 'user'),
+                    None
+                )
+                
+                if last_user_message and len(last_user_message) > 10:
+                    # Получаем успешные диалоги из БД
+                    successful_convos = database.db.get_successful_conversations(limit=30)
+                    
+                    if successful_convos:
+                        # Ищем похожие через семантический поиск
+                        similar = knowledge_engine.knowledge_engine.find_similar_conversations(
+                            query=last_user_message,
+                            conversations=successful_convos,
+                            top_k=2,  # Топ-2 похожих примера
+                            min_similarity=0.6  # Минимальное сходство 60%
+                        )
+                        
+                        if similar:
+                            # Форматируем примеры для промпта
+                            rag_context = knowledge_engine.knowledge_engine.format_similar_examples_for_prompt(similar)
+                            logger.info(f"📚 RAG: Found {len(similar)} similar conversations, adding to context")
+            
+            except Exception as e:
+                logger.warning(f"RAG search failed (non-critical): {e}")
+                # Продолжаем без RAG если что-то пошло не так
+            
+            # ДОБАВЛЯЕМ RAG КОНТЕКСТ ЕСЛИ НАШЛИ
+            if rag_context:
+                messages.append({
+                    "role": "system",
+                    "content": rag_context
+                })
+            
+            # Добавляем историю диалога
             for msg in limited_history:
                 messages.append({
                     "role": msg["role"],
                     "content": msg.get("content") or msg.get("message")
                 })
 
-            logger.debug(f"Sending request to OpenAI with {len(messages)} messages")
+            logger.debug(f"Sending request to OpenAI with {len(messages)} messages (RAG: {bool(rag_context)})")
 
             # Запрос к OpenAI
             # ВАЖНО: max_completion_tokens = лимит ТОЛЬКО на ответ (не включает prompt!)
@@ -118,7 +159,7 @@ class AIBrain:
             if finish_reason == "length":
                 logger.warning(f"⚠️ Response truncated! ({len(assistant_message)} chars, finish_reason: length)")
             else:
-                logger.info(f"Received response from OpenAI: {len(assistant_message)} chars (finish_reason: {finish_reason})")
+                logger.info(f"Received response from OpenAI: {len(assistant_message)} chars (finish_reason: {finish_reason}, RAG: {bool(rag_context)})")
 
             return assistant_message
 

@@ -486,6 +486,138 @@ class Database:
             raise
         finally:
             conn.close()
+    
+    # === KNOWLEDGE BASE / RAG ===
+    
+    def get_successful_conversations(self, limit: int = 50) -> List[Dict]:
+        """
+        Получение успешных диалогов (warm/hot лиды) для RAG
+        
+        Returns:
+            Список словарей с полными диалогами и метаданными лидов
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Получаем успешные лиды
+            cursor.execute("""
+                SELECT 
+                    l.*,
+                    u.telegram_id,
+                    u.username,
+                    u.first_name
+                FROM leads l
+                JOIN users u ON l.user_id = u.id
+                WHERE l.temperature IN ('warm', 'hot')
+                  AND (l.service_category IS NOT NULL OR l.pain_point IS NOT NULL)
+                ORDER BY l.created_at DESC
+                LIMIT ?
+            """, (limit,))
+            
+            leads = [dict(row) for row in cursor.fetchall()]
+            
+            # Для каждого лида получаем историю диалога
+            result = []
+            for lead in leads:
+                user_id = lead['user_id']
+                
+                # Получаем сообщения диалога
+                cursor.execute("""
+                    SELECT role, message, timestamp
+                    FROM conversations
+                    WHERE user_id = ?
+                    ORDER BY timestamp ASC
+                """, (user_id,))
+                
+                messages = [dict(row) for row in cursor.fetchall()]
+                
+                # Формируем полный объект
+                result.append({
+                    'lead_id': lead['id'],
+                    'user_id': user_id,
+                    'service_category': lead.get('service_category'),
+                    'specific_need': lead.get('specific_need'),
+                    'pain_point': lead.get('pain_point'),
+                    'industry': lead.get('industry'),
+                    'temperature': lead.get('temperature'),
+                    'messages': messages
+                })
+            
+            logger.info(f"Retrieved {len(result)} successful conversations for RAG")
+            return result
+            
+        finally:
+            conn.close()
+    
+    def get_conversations_by_category(
+        self, 
+        service_category: str, 
+        temperature: str = None,
+        limit: int = 20
+    ) -> List[Dict]:
+        """
+        Получение диалогов по категории услуги
+        
+        Args:
+            service_category: Категория услуги
+            temperature: Фильтр по температуре (опционально)
+            limit: Максимальное количество результатов
+            
+        Returns:
+            Список диалогов с метаданными
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            query = """
+                SELECT 
+                    l.*,
+                    u.telegram_id,
+                    u.first_name
+                FROM leads l
+                JOIN users u ON l.user_id = u.id
+                WHERE l.service_category = ?
+            """
+            
+            params = [service_category]
+            
+            if temperature:
+                query += " AND l.temperature = ?"
+                params.append(temperature)
+            
+            query += " ORDER BY l.created_at DESC LIMIT ?"
+            params.append(limit)
+            
+            cursor.execute(query, params)
+            leads = [dict(row) for row in cursor.fetchall()]
+            
+            # Добавляем сообщения для каждого лида
+            result = []
+            for lead in leads:
+                cursor.execute("""
+                    SELECT role, message, timestamp
+                    FROM conversations
+                    WHERE user_id = ?
+                    ORDER BY timestamp ASC
+                """, (lead['user_id'],))
+                
+                messages = [dict(row) for row in cursor.fetchall()]
+                
+                result.append({
+                    'lead_id': lead['id'],
+                    'service_category': lead.get('service_category'),
+                    'specific_need': lead.get('specific_need'),
+                    'pain_point': lead.get('pain_point'),
+                    'temperature': lead.get('temperature'),
+                    'messages': messages
+                })
+            
+            return result
+            
+        finally:
+            conn.close()
 
     # === ADMIN NOTIFICATIONS ===
 
