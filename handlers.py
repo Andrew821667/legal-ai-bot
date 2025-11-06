@@ -427,6 +427,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if message_text in ["📋 Услуги", "💰 Цены", "📞 Консультация", "❓ Помощь"]:
             await handle_menu_button(update, context, message_text)
             return
+        
+        # Обработка команды /menu (на случай если CommandHandler не сработал)
+        if message_text.strip().lower() in ['/menu', 'menu', '/меню', 'меню']:
+            await menu_command(update, context)
+            return
 
         if message_text == "🔄 Начать заново":
             await reset_command(update, context)
