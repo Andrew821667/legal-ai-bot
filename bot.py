@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 async def check_pending_leads_job(context):
     """
     Фоновая задача: проверяет лиды у которых прошло 5+ минут с последнего сообщения
-    и отправляет уведомления админу
+    и отправляет уведомления админу (новые или обновленные)
     """
     try:
         logger.debug("Checking for pending leads ready for notification...")
@@ -39,6 +39,9 @@ async def check_pending_leads_job(context):
                     if not user_data:
                         logger.warning(f"User {lead['user_id']} not found for lead {lead['id']}")
                         continue
+                    
+                    # Проверяем - это новый лид или обновление?
+                    is_update = lead.get('notification_sent') == 1  # Если уже было уведомление
                     
                     # Формируем lead_data из сохраненных данных
                     lead_data = {
@@ -59,9 +62,10 @@ async def check_pending_leads_job(context):
                     }
                     
                     # Отправляем уведомление админу
-                    await handlers.notify_admin_new_lead(context, lead['id'], lead_data, user_data)
+                    await handlers.notify_admin_new_lead(context, lead['id'], lead_data, user_data, is_update=is_update)
                     
-                    logger.info(f"✅ Notification sent for lead {lead['id']} (user {user_data.get('first_name')})")
+                    action = "ОБНОВЛЕН" if is_update else "НОВЫЙ"
+                    logger.info(f"✅ {action} лид: Notification sent for lead {lead['id']} (user {user_data.get('first_name')})")
                     
                 except Exception as e:
                     logger.error(f"Error processing lead {lead.get('id')}: {e}", exc_info=True)

@@ -480,22 +480,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     
                     logger.info(f"Lead {lead_id} updated, waiting for conversation to finish before notifying admin")
 
-                # Проверяем был ли уже предложен lead magnet
-                existing_lead = database.db.get_lead_by_user_id(user_data['id'])
-                lead_magnet_already_offered = existing_lead and existing_lead.get('lead_magnet_type') is not None
-
-                # Проверяем нужно ли предложить lead magnet (ТОЛЬКО ОДИН РАЗ!)
-                if not lead_magnet_already_offered and ai_brain.ai_brain.should_offer_lead_magnet(lead_data):
-                    await offer_lead_magnet(update, context)
-
-                # Проверяем нужно ли уведомить админа (старая система, оставляем для совместимости)
-                if utils.is_hot_lead(lead_data):
-                    admin_interface.admin_interface.send_admin_notification(
-                        context.bot,
-                        lead_id,
-                        'hot_lead'
-                    )
-
     except Exception as e:
         # Пропускаем Peer_id_invalid - нормально для бизнес-сообщений
         if "Peer_id_invalid" not in str(e):
@@ -1144,17 +1128,15 @@ async def handle_cleanup_callback(update: Update, context: ContextTypes.DEFAULT_
         await query.message.reply_text(f"Ошибка: {str(e)}")
 
 
-async def notify_admin_new_lead(context, lead_id: int, lead_data: dict, user_data: dict):
-    """Отправка уведомления админу о новом лиде (ОДИН РАЗ!)"""
+async def notify_admin_new_lead(context, lead_id: int, lead_data: dict, user_data: dict, is_update: bool = False):
+    """
+    Отправка уведомления админу о лиде
+    is_update: True если это обновление существующего лида (клиент вернулся с новой инфой)
+    """
     try:
         # Получаем информацию о лиде
         lead = database.db.get_lead_by_id(lead_id)
         if not lead:
-            return
-
-        # Проверяем было ли уже отправлено уведомление
-        if lead.get('notification_sent'):
-            logger.info(f"Lead {lead_id} notification already sent, skipping")
             return
 
         # Формируем сообщение для админа
@@ -1173,8 +1155,11 @@ async def notify_admin_new_lead(context, lead_id: int, lead_data: dict, user_dat
         username_str = f"@{username}" if username else "нет"
         telegram_id = user_data.get('telegram_id') or user_data.get('id')
 
+        # ЗАГОЛОВОК: НОВЫЙ ИЛИ ОБНОВЛЕНИЕ
+        header = f"{temperature_emoji} 🔄 ОБНОВЛЕНИЕ ЛИДА!\n\n" if is_update else f"{temperature_emoji} НОВЫЙ ЛИД!\n\n"
+        
         notification_message = (
-            f"{temperature_emoji} НОВЫЙ ЛИД!\n\n"
+            header +
             f"👤 Имя: {lead.get('name') or 'Не указано'}\n"
             f"📱 Telegram: {username_str} (ID: {telegram_id})\n"
             f"🏢 Компания: {lead.get('company') or 'Не указана'}\n"
