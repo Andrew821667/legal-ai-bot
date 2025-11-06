@@ -1418,6 +1418,25 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         # Обработка кнопок меню для бизнес-чата (удалено - используем callback)
         # Inline кнопки обрабатываются через callback_query
         
+        # Обработка команды /menu для бизнес-чата
+        if text.strip().lower() in ['/menu', 'menu', '/меню', 'меню']:
+            keyboard = [
+                [InlineKeyboardButton("📋 Услуги", callback_data="menu_services")],
+                [InlineKeyboardButton("💰 Цены", callback_data="menu_prices")],
+                [InlineKeyboardButton("📞 Консультация", callback_data="menu_consultation")],
+                [InlineKeyboardButton("❓ Помощь", callback_data="menu_help")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await context.bot.send_message(
+                chat_id=message.chat.id,
+                text="📋 МЕНЮ УСЛУГ:\n\nВыберите интересующую тему:",
+                reply_markup=reply_markup,
+                business_connection_id=message.business_connection_id
+            )
+            logger.info(f"[Business] Menu shown to user {user_id}")
+            return
+        
         # Обработка команды сброса
         if text == "🔄 Начать заново":
             user_data = database.db.get_user_by_telegram_id(user_id)
