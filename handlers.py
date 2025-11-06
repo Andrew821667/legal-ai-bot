@@ -473,6 +473,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "👍 Рад был помочь! Если возникнут вопросы - обращайтесь!"
             )
             return
+        
+        # ПРОВЕРКА: если клиент повторяет одно и то же сообщение 3+ раза
+        # И прошло более 30 минут с начала диалога - завершаем разговор
+        conversation_history = database.db.get_conversation_history(user_data['id'])
+        
+        if len(conversation_history) > 0:
+            # Получаем последние сообщения пользователя
+            user_messages = [msg for msg in conversation_history if msg['role'] == 'user']
+            
+            # Проверяем повторы последних 3-х сообщений
+            if len(user_messages) >= 3:
+                last_three = [msg['content'].strip().lower() for msg in user_messages[-3:]]
+                
+                # Если все 3 последних сообщения одинаковые
+                if len(set(last_three)) == 1:
+                    # Проверяем прошло ли 30 минут с начала диалога
+                    import datetime
+                    first_message_time = datetime.datetime.fromisoformat(conversation_history[0]['timestamp'])
+                    current_time = datetime.datetime.now()
+                    time_elapsed = (current_time - first_message_time).total_seconds() / 60  # в минутах
+                    
+                    if time_elapsed > 30:
+                        await update.effective_message.reply_text(
+                            "Похоже, у нас возникли трудности с пониманием.\n\n"
+                            "Предлагаю связаться напрямую с нашей командой:\n"
+                            "📧 a.popov.gv@gmail.com\n"
+                            "📱 @AndrewPopov821667\n"
+                            "📞 +7 (909) 233-09-09"
+                        )
+                        return
 
         # Сохраняем сообщение пользователя
         database.db.add_message(user_data['id'], 'user', message_text)
