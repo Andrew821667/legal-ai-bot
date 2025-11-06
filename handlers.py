@@ -475,12 +475,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # Отправляем уведомление ТОЛЬКО если:
                     # 1. Лид горячий или теплый (не холодный)
                     # 2. ИЛИ собраны ключевые данные (имя + контакт + боль)
+                    
+                    # ИСПРАВЛЕНИЕ: AI возвращает 'lead_temperature', приводим к 'temperature'
+                    temperature = lead_data.get('temperature') or lead_data.get('lead_temperature', 'cold')
+                    
                     should_notify = (
-                        lead_data.get('temperature') in ['hot', 'warm'] or
+                        temperature in ['hot', 'warm'] or
                         (lead_data.get('name') and
                          (lead_data.get('email') or lead_data.get('phone')) and
                          lead_data.get('pain_point'))
                     )
+                    
+                    logger.info(f"Lead {lead_id}: temperature={temperature}, should_notify={should_notify}")
 
                     if should_notify:
                         await notify_admin_new_lead(context, lead_id, lead_data, user_data)
@@ -1163,11 +1169,15 @@ async def notify_admin_new_lead(context, lead_id: int, lead_data: dict, user_dat
             return
 
         # Формируем сообщение для админа
+        # ИСПРАВЛЕНИЕ: проверяем оба поля - 'temperature' и 'lead_temperature'
+        temperature = lead.get('temperature') or lead_data.get('temperature') or lead_data.get('lead_temperature', 'cold')
+        logger.info(f"Lead {lead_id} notification: temperature={temperature} (from lead_data: {lead_data.get('temperature') or lead_data.get('lead_temperature')})")
+        
         temperature_emoji = {
             'hot': '🔥',
             'warm': '♨️',
             'cold': '❄️'
-        }.get(lead.get('temperature', 'cold'), '❓')
+        }.get(temperature, '❓')
 
         # Получаем telegram username
         username = user_data.get('username')
@@ -1314,8 +1324,8 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             # ИЛИ прошло достаточно времени (для избежания rate limit)
             current_time = time.time()
             should_update = (
-                (len(full_response) - last_update_length >= 150 and current_time - last_update_time >= 2.0) or  # Каждые 150 символов И минимум 2 сек
-                (len(chunk_buffer) > 300 and current_time - last_update_time >= 3.0)  # Или каждые 3 секунды при 300+ символах
+                (len(full_response) - last_update_length >= 150 and current_time - last_update_time >= 3.5) or  # Каждые 150 символов И минимум 3.5 сек (было 2)
+                (len(chunk_buffer) > 300 and current_time - last_update_time >= 5.0)  # Или каждые 5 секунд при 300+ символах (было 3)
             )
 
             if should_update:
@@ -1422,12 +1432,17 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 
                 if lead_id:
                     # Уведомляем админа о новом лиде
+                    # ИСПРАВЛЕНИЕ: AI возвращает 'lead_temperature', приводим к 'temperature'
+                    temperature = lead_data.get('temperature') or lead_data.get('lead_temperature', 'cold')
+                    
                     should_notify = (
-                        lead_data.get('temperature') in ['hot', 'warm'] or
+                        temperature in ['hot', 'warm'] or
                         (lead_data.get('name') and
                          (lead_data.get('email') or lead_data.get('phone')) and
                          lead_data.get('pain_point'))
                     )
+                    
+                    logger.info(f"[Business] Lead {lead_id}: temperature={temperature}, should_notify={should_notify}")
                     
                     if should_notify:
                         await notify_admin_new_lead(context, lead_id, lead_data, {"id": user, "telegram_id": user_id})
