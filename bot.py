@@ -98,6 +98,7 @@ def main():
         logger.info("Registering callback handlers...")
         application.add_handler(CallbackQueryHandler(handlers.handle_admin_panel_callback, pattern="^admin_"))
         application.add_handler(CallbackQueryHandler(handlers.handle_cleanup_callback, pattern="^cleanup_"))
+        application.add_handler(CallbackQueryHandler(handlers.handle_business_menu_callback, pattern="^menu_"))
 
         logger.info("Registering message handlers...")
         # Обычные сообщения (НЕ команды, НЕ бизнес)
