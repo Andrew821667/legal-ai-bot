@@ -4,10 +4,11 @@ import sys
 import database
 import handlers
 import admin_interface
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from telegram.ext import BaseHandler, TypeHandler
 import config
+import asyncio
 
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
@@ -15,6 +16,21 @@ logging.basicConfig(
     handlers=[logging.FileHandler(config.LOG_FILE), logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
+
+# Функция для настройки кнопок меню бота
+async def setup_bot_commands(application):
+    """Настройка кнопок меню бота (иконка ☰ в строке ввода)"""
+    commands = [
+        BotCommand("start", "Начать работу с ботом"),
+        BotCommand("help", "Показать справку"),
+        BotCommand("reset", "Очистить историю диалога"),
+    ]
+    
+    try:
+        await application.bot.set_my_commands(commands)
+        logger.info("✅ Bot menu commands configured successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to set bot commands: {e}")
 
 # Background job для проверки лидов готовых к уведомлению
 async def check_pending_leads_job(context):
@@ -125,9 +141,16 @@ def main():
             logger.warning("⚠️ Delayed lead notifications will NOT work without JobQueue")
         
         logger.info("All handlers registered successfully")
+        
         logger.info("Starting bot polling...")
         logger.info("Bot is ready to receive messages!")
         logger.info("Press Ctrl+C to stop")
+        
+        # Настраиваем кнопки меню бота после запуска
+        async def post_init(app: Application) -> None:
+            await setup_bot_commands(app)
+        
+        application.post_init = post_init
         
         application.run_polling(allowed_updates=Update.ALL_TYPES)
         
