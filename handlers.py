@@ -291,6 +291,28 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Произошла ошибка. Попробуйте /start")
 
 
+async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /menu - показывает меню услуг"""
+    try:
+        keyboard = [
+            [InlineKeyboardButton("📋 Услуги", callback_data="menu_services")],
+            [InlineKeyboardButton("💰 Цены", callback_data="menu_prices")],
+            [InlineKeyboardButton("📞 Консультация", callback_data="menu_consultation")],
+            [InlineKeyboardButton("❓ Помощь", callback_data="menu_help")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            "📋 МЕНЮ УСЛУГ:\n\nВыберите интересующую тему:",
+            reply_markup=reply_markup
+        )
+        logger.info(f"Menu shown to user {update.effective_user.id}")
+        
+    except Exception as e:
+        logger.error(f"Error in menu_command: {e}")
+        await update.message.reply_text("Произошла ошибка. Попробуйте /start")
+
+
 async def handle_business_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Обработчик inline кнопок меню для бизнес-чатов

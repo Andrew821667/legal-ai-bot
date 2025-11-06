@@ -22,6 +22,7 @@ async def setup_bot_commands(application):
     """Настройка кнопок меню бота (иконка ☰ в строке ввода)"""
     commands = [
         BotCommand("start", "Начать работу с ботом"),
+        BotCommand("menu", "Показать меню услуг"),
         BotCommand("help", "Показать справку"),
         BotCommand("reset", "Очистить историю диалога"),
     ]
@@ -108,6 +109,7 @@ def main():
         
         logger.info("Registering user handlers...")
         application.add_handler(CommandHandler("start", handlers.start_command))
+        application.add_handler(CommandHandler("menu", handlers.menu_command))
         application.add_handler(CommandHandler("help", handlers.help_command))
         application.add_handler(CommandHandler("reset", handlers.reset_command))
         
