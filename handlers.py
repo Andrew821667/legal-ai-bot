@@ -1414,6 +1414,11 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         
         # Получаем историю диалога
         conversation_history = database.db.get_conversation_history(user)
+        
+        # ПРОВЕРКА: если это первое сообщение клиента - показываем кнопки меню
+        # (в бизнес-чатах клиент не видит /start, начинает сразу с вопроса)
+        is_first_message = len(conversation_history) <= 1  # Только его первое сообщение
+        show_menu_buttons = is_first_message
 
         # Получаем ответ от AI с постепенным streaming (как в GPT)
         full_response = ""
@@ -1521,10 +1526,22 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             # Обычное обновление для коротких сообщений
             if sent_message:
                 try:
+                    # Добавляем кнопки меню при первом сообщении
+                    reply_markup = None
+                    if show_menu_buttons:
+                        keyboard = [
+                            [InlineKeyboardButton("📋 Услуги", callback_data="menu_services")],
+                            [InlineKeyboardButton("💰 Цены", callback_data="menu_prices")],
+                            [InlineKeyboardButton("📞 Консультация", callback_data="menu_consultation")],
+                            [InlineKeyboardButton("❓ Помощь", callback_data="menu_help")]
+                        ]
+                        reply_markup = InlineKeyboardMarkup(keyboard)
+                    
                     await context.bot.edit_message_text(
                         chat_id=message.chat.id,
                         message_id=sent_message.message_id,
                         text=full_response,
+                        reply_markup=reply_markup,
                         business_connection_id=message.business_connection_id
                     )
                     logger.debug("[Business] Final message update sent")
@@ -1532,9 +1549,20 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                     pass
             else:
                 # Если текст был слишком коротким для постепенного вывода
+                reply_markup = None
+                if show_menu_buttons:
+                    keyboard = [
+                        [InlineKeyboardButton("📋 Услуги", callback_data="menu_services")],
+                        [InlineKeyboardButton("💰 Цены", callback_data="menu_prices")],
+                        [InlineKeyboardButton("📞 Консультация", callback_data="menu_consultation")],
+                        [InlineKeyboardButton("❓ Помощь", callback_data="menu_help")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                
                 await context.bot.send_message(
                     chat_id=message.chat.id,
                     text=full_response,
+                    reply_markup=reply_markup,
                     business_connection_id=message.business_connection_id
                 )
 
