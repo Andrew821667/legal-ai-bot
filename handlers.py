@@ -4,6 +4,7 @@ Telegram handlers - обработчики команд и сообщений
 import logging
 import time
 import re
+import asyncio
 from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -382,14 +383,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # ИЛИ прошло достаточно времени (для избежания rate limit)
             current_time = time.time()
             should_update = (
-                len(full_response) - last_update_length >= 25 or  # Каждые 25 символов
-                (len(chunk_buffer) > 50 and current_time - last_update_time >= 1.0)  # Или раз в секунду
+                (len(full_response) - last_update_length >= 150 and current_time - last_update_time >= 2.0) or  # Каждые 150 символов И минимум 2 сек
+                (len(chunk_buffer) > 300 and current_time - last_update_time >= 3.0)  # Или каждые 3 секунды при 300+ символах
             )
 
             if should_update:
                 if sent_message is None:
-                    # Первая отправка - когда накопилось хотя бы 30 символов
-                    if len(full_response.strip()) >= 30:
+                    # Первая отправка - когда накопилось хотя бы 100 символов (снижаем частоту обновлений)
+                    if len(full_response.strip()) >= 100:
                         try:
                             sent_message = await original_message.reply_text(full_response)
                             last_update_length = len(full_response)
@@ -415,15 +416,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         generation_time = time.time() - start_generation
         logger.info(f"Response generated in {generation_time:.2f}s ({len(full_response)} chars)")
 
-        if sent_message:
-            try:
-                await sent_message.edit_text(full_response)
-                logger.debug("Final message update sent")
-            except Exception:
-                pass
+        # Проверяем нужно ли разбить на части (лимит Telegram 4096 символов)
+        if len(full_response) > 4096:
+            logger.warning(f"Response too long ({len(full_response)} chars), splitting into parts")
+            # Разбиваем на части
+            parts = utils.split_long_message(full_response, max_length=4000)  # Оставляем запас
+            
+            # Удаляем первое сообщение если оно было отправлено
+            if sent_message:
+                try:
+                    await sent_message.delete()
+                except Exception:
+                    pass
+            
+            # Отправляем по частям
+            for i, part in enumerate(parts):
+                part_msg = f"[Часть {i+1}/{len(parts)}]\n\n{part}" if len(parts) > 1 else part
+                await original_message.reply_text(part_msg)
+                # Небольшая задержка между частями
+                if i < len(parts) - 1:
+                    await original_message.chat.send_action(action="typing")
+                    await asyncio.sleep(0.5)
         else:
-            # Если текст был слишком коротким для постепенного вывода
-            await original_message.reply_text(full_response)
+            # Обычное обновление для коротких сообщений
+            if sent_message:
+                try:
+                    await sent_message.edit_text(full_response)
+                    logger.debug("Final message update sent")
+                except Exception:
+                    pass
+            else:
+                # Если текст был слишком коротким для постепенного вывода
+                await original_message.reply_text(full_response)
 
         # Сохраняем ответ ассистента
         database.db.add_message(user_data['id'], 'assistant', full_response)
@@ -1290,14 +1314,14 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             # ИЛИ прошло достаточно времени (для избежания rate limit)
             current_time = time.time()
             should_update = (
-                len(full_response) - last_update_length >= 25 or  # Каждые 25 символов
-                (len(chunk_buffer) > 50 and current_time - last_update_time >= 1.0)  # Или раз в секунду
+                (len(full_response) - last_update_length >= 150 and current_time - last_update_time >= 2.0) or  # Каждые 150 символов И минимум 2 сек
+                (len(chunk_buffer) > 300 and current_time - last_update_time >= 3.0)  # Или каждые 3 секунды при 300+ символах
             )
 
             if should_update:
                 if sent_message is None:
-                    # Первая отправка - когда накопилось хотя бы 30 символов
-                    if len(full_response.strip()) >= 30:
+                    # Первая отправка - когда накопилось хотя бы 100 символов (снижаем частоту обновлений)
+                    if len(full_response.strip()) >= 100:
                         try:
                             sent_message = await context.bot.send_message(
                                 chat_id=message.chat.id,
@@ -1332,24 +1356,58 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         generation_time = time.time() - start_generation
         logger.info(f"[Business] Response generated in {generation_time:.2f}s ({len(full_response)} chars)")
 
-        if sent_message:
-            try:
-                await context.bot.edit_message_text(
+        # Проверяем нужно ли разбить на части (лимит Telegram 4096 символов)
+        if len(full_response) > 4096:
+            logger.warning(f"[Business] Response too long ({len(full_response)} chars), splitting into parts")
+            # Разбиваем на части
+            parts = utils.split_long_message(full_response, max_length=4000)
+            
+            # Удаляем первое сообщение если оно было отправлено
+            if sent_message:
+                try:
+                    await context.bot.delete_message(
+                        chat_id=message.chat.id,
+                        message_id=sent_message.message_id
+                    )
+                except Exception:
+                    pass
+            
+            # Отправляем по частям
+            for i, part in enumerate(parts):
+                part_msg = f"[Часть {i+1}/{len(parts)}]\n\n{part}" if len(parts) > 1 else part
+                await context.bot.send_message(
                     chat_id=message.chat.id,
-                    message_id=sent_message.message_id,
+                    text=part_msg,
+                    business_connection_id=message.business_connection_id
+                )
+                # Небольшая задержка между частями
+                if i < len(parts) - 1:
+                    await context.bot.send_chat_action(
+                        chat_id=message.chat.id,
+                        action="typing",
+                        business_connection_id=message.business_connection_id
+                    )
+                    await asyncio.sleep(0.5)
+        else:
+            # Обычное обновление для коротких сообщений
+            if sent_message:
+                try:
+                    await context.bot.edit_message_text(
+                        chat_id=message.chat.id,
+                        message_id=sent_message.message_id,
+                        text=full_response,
+                        business_connection_id=message.business_connection_id
+                    )
+                    logger.debug("[Business] Final message update sent")
+                except Exception:
+                    pass
+            else:
+                # Если текст был слишком коротким для постепенного вывода
+                await context.bot.send_message(
+                    chat_id=message.chat.id,
                     text=full_response,
                     business_connection_id=message.business_connection_id
                 )
-                logger.debug("[Business] Final message update sent")
-            except Exception:
-                pass
-        else:
-            # Если текст был слишком коротким для постепенного вывода
-            await context.bot.send_message(
-                chat_id=message.chat.id,
-                text=full_response,
-                business_connection_id=message.business_connection_id
-            )
 
         # Сохраняем ответ
         database.db.add_message(user, 'assistant', full_response)

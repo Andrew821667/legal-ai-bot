@@ -90,6 +90,64 @@ def truncate_text(text: str, max_length: int = 100) -> str:
     return text[:max_length] + '...'
 
 
+def split_long_message(text: str, max_length: int = 4096) -> list:
+    """
+    Разбиение длинного сообщения на части с учетом лимита Telegram (4096 символов)
+    Старается разбивать по абзацам или предложениям для красоты
+    
+    Args:
+        text: Текст для разбиения
+        max_length: Максимальная длина одной части (по умолчанию 4096 - лимит Telegram)
+        
+    Returns:
+        Список частей текста
+    """
+    if len(text) <= max_length:
+        return [text]
+    
+    parts = []
+    current_part = ""
+    
+    # Разбиваем по абзацам
+    paragraphs = text.split('\n\n')
+    
+    for paragraph in paragraphs:
+        # Если параграф + текущая часть помещаются
+        if len(current_part) + len(paragraph) + 2 <= max_length:
+            if current_part:
+                current_part += '\n\n'
+            current_part += paragraph
+        else:
+            # Сохраняем текущую часть если она не пустая
+            if current_part:
+                parts.append(current_part)
+                current_part = ""
+            
+            # Если параграф сам по себе слишком длинный - режем по предложениям
+            if len(paragraph) > max_length:
+                sentences = re.split(r'([.!?]\s+)', paragraph)
+                temp_text = ""
+                
+                for i, sentence in enumerate(sentences):
+                    if len(temp_text) + len(sentence) <= max_length:
+                        temp_text += sentence
+                    else:
+                        if temp_text:
+                            parts.append(temp_text)
+                        temp_text = sentence
+                
+                if temp_text:
+                    current_part = temp_text
+            else:
+                current_part = paragraph
+    
+    # Добавляем последнюю часть
+    if current_part:
+        parts.append(current_part)
+    
+    return parts
+
+
 def is_hot_lead(lead_data: dict) -> bool:
     """
     Определение горячего лида по критериям

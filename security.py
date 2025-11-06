@@ -45,8 +45,8 @@ class SecurityManager:
             'per_week': 200000,           # Макс 200К токенов в неделю
         }
 
-        self.COOLDOWN_SECONDS = 2  # Минимум 2 секунды между сообщениями
-        self.MAX_MESSAGE_LENGTH = 2000  # Макс длина сообщения
+        self.COOLDOWN_SECONDS = 1  # Минимум 1 секунда между сообщениями (было 2)
+        self.MAX_MESSAGE_LENGTH = 4000  # Макс длина сообщения (увеличено с 2000 до 4000)
 
         self.TOTAL_DAILY_BUDGET = 100000  # Общий дневной бюджет токенов для всех
         self.total_tokens_today = 0
