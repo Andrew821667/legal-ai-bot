@@ -522,6 +522,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Сохраняем ответ ассистента
         database.db.add_message(user_data['id'], 'assistant', full_response)
+        
+        # ОТПРАВЛЯЕМ КНОПКИ МЕНЮ при первом сообщении клиента
+        is_first_message = len(conversation_history) <= 2  # 1 сообщение user + 1 ответ assistant
+        if is_first_message:
+            keyboard = [
+                [InlineKeyboardButton("📋 Услуги", callback_data="menu_services")],
+                [InlineKeyboardButton("💰 Цены", callback_data="menu_prices")],
+                [InlineKeyboardButton("📞 Консультация", callback_data="menu_consultation")],
+                [InlineKeyboardButton("❓ Помощь", callback_data="menu_help")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            try:
+                await original_message.reply_text(
+                    "Выберите интересующую тему:",
+                    reply_markup=reply_markup
+                )
+                logger.info(f"Menu buttons sent to user {user.id}")
+            except Exception as e:
+                logger.warning(f"Failed to send menu buttons: {e}")
 
         # 🛡️ УЧЕТ ИСПОЛЬЗОВАННЫХ ТОКЕНОВ
         # Оцениваем токены: user message + assistant response + system prompt
