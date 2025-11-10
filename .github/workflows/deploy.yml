@@ -47,7 +47,8 @@ jobs:
         with:
           host: ${{ secrets.VDS_HOST }}
           username: ${{ secrets.VDS_USERNAME }}
-          password: ${{ secrets.VDS_PASSWORD }}
+          key: ${{ secrets.VDS_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VDS_PORT || 22 }}
           script: |
             cd /opt/legal-ai-bot
             bash deploy.sh

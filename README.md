@@ -139,6 +139,41 @@ sudo systemctl status telegram-bot
 sudo systemctl enable telegram-bot
 ```
 
+## CI/CD - Автоматический деплой через GitHub Actions
+
+Проект настроен для автоматического деплоя при push в main ветку.
+
+### Что происходит при push:
+
+1. **Запускаются тесты** - проверка всех модулей
+2. **Деплой на VDS** - если тесты прошли
+3. **Health check** - проверка что бот работает
+
+### Настройка CI/CD
+
+Для работы автоматического деплоя нужно настроить GitHub Secrets:
+
+**Обязательные секреты:**
+- `VDS_HOST` - IP адрес VDS сервера
+- `VDS_USERNAME` - пользователь на VDS (обычно `root`)
+- `VDS_SSH_PRIVATE_KEY` - SSH приватный ключ для подключения
+- `TELEGRAM_BOT_TOKEN` - токен бота (для health check)
+- `OPENAI_API_KEY` - OpenAI API ключ (для тестов)
+- `ADMIN_TELEGRAM_ID` - ID админа (для тестов)
+
+**Опциональные:**
+- `VDS_PORT` - SSH порт (по умолчанию 22)
+
+### Настройка SSH ключей
+
+Для безопасного деплоя используются SSH ключи вместо пароля.
+
+**Подробная инструкция:** [SSH_SETUP.md](SSH_SETUP.md)
+
+### Просмотр логов деплоя
+
+https://github.com/Andrew821667/legal-ai-bot/actions
+
 ## Пользовательские команды
 
 - `/start` - Начало работы с ботом
