@@ -21,6 +21,7 @@ if LEADS_CHAT_ID:
 # OpenAI настройки
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
 MAX_TOKENS = int(os.getenv('MAX_TOKENS', 4000))  # Увеличено до 4000 чтобы не было обрывов фраз
+MAX_COMPLETION_TOKENS = int(os.getenv('MAX_COMPLETION_TOKENS', 16000))  # Лимит ТОЛЬКО на ответ (не включает prompt)
 TEMPERATURE = float(os.getenv('TEMPERATURE', 0.7))
 
 # База данных

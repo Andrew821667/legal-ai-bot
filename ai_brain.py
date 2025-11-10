@@ -52,7 +52,7 @@ class AIBrain:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_completion_tokens=16000,  # Гарантирует 16K токенов для ОТВЕТА
+                max_completion_tokens=config.MAX_COMPLETION_TOKENS,
                 temperature=self.temperature,
                 stream=True  # Включаем потоковую передачу!
             )
@@ -148,7 +148,7 @@ class AIBrain:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_completion_tokens=16000,  # Гарантирует 16K токенов для ОТВЕТА
+                max_completion_tokens=config.MAX_COMPLETION_TOKENS,
                 temperature=self.temperature
             )
 
