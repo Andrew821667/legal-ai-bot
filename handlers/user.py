@@ -21,6 +21,11 @@ from handlers.constants import *
 
 logger = logging.getLogger(__name__)
 
+# Import admin panel function (avoid at module level due to potential circular import)
+def get_show_admin_panel():
+    from handlers.admin import show_admin_panel
+    return show_admin_panel
+
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
@@ -192,7 +197,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Админ-панель (только для админа)
         if message_text == "⚙️ Админ-панель":
             if user.id == config.ADMIN_TELEGRAM_ID:
-                await show_admin_panel(update, context)
+                show_admin_panel_func = get_show_admin_panel()
+                await show_admin_panel_func(update, context)
             else:
                 await update.effective_message.reply_text("У вас нет доступа к этой функции")
             return
