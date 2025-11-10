@@ -12,8 +12,8 @@ git pull origin main
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Перезапускаем бота
-supervisorctl restart legal-ai-bot
+# Перезапускаем бота через systemd
+systemctl restart telegram-bot
 
 echo "✅ Deployment completed successfully!"
 echo "📅 $(date)" >> /var/log/deploy.log
