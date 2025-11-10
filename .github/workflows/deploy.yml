@@ -9,11 +9,11 @@ jobs:
   deploy:
     name: Deploy Legal AI Bot
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v3
-      
+
       - name: 🔐 Deploy via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -23,7 +23,24 @@ jobs:
           script: |
             cd /opt/legal-ai-bot
             bash deploy.sh
-      
+
+      - name: 🔍 Health Check
+        run: |
+          echo "⏳ Waiting 10 seconds for bot to start..."
+          sleep 10
+
+          echo "🔍 Checking bot status via Telegram API..."
+          response=$(curl -s "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/getMe")
+
+          if echo "$response" | grep -q '"ok":true'; then
+            echo "✅ Bot is running and responding!"
+            echo "$response" | jq '.result.username'
+          else
+            echo "❌ Bot health check failed!"
+            echo "$response"
+            exit 1
+          fi
+
       - name: ✅ Deployment notification
         run: echo "✅ Bot deployed successfully to VDS!"
 
