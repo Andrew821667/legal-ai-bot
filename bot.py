@@ -2,7 +2,7 @@
 import logging
 import sys
 import database
-import handlers
+from handlers import *
 import admin_interface
 from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
@@ -79,7 +79,7 @@ async def check_pending_leads_job(context):
                     }
                     
                     # Отправляем уведомление админу
-                    await handlers.notify_admin_new_lead(context, lead['id'], lead_data, user_data, is_update=is_update)
+                    await notify_admin_new_lead(context, lead['id'], lead_data, user_data, is_update=is_update)
                     
                     action = "ОБНОВЛЕН" if is_update else "НОВЫЙ"
                     logger.info(f"✅ {action} лид: Notification sent for lead {lead['id']} (user {user_data.get('first_name')})")
@@ -108,29 +108,29 @@ def main():
         application = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
         
         logger.info("Registering user handlers...")
-        application.add_handler(CommandHandler("start", handlers.start_command))
-        application.add_handler(CommandHandler("menu", handlers.menu_command))
-        application.add_handler(CommandHandler("help", handlers.help_command))
-        application.add_handler(CommandHandler("reset", handlers.reset_command))
-        
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("menu", menu_command))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("reset", reset_command))
+
         logger.info("Registering callback handlers...")
-        application.add_handler(CallbackQueryHandler(handlers.handle_admin_panel_callback, pattern="^admin_"))
-        application.add_handler(CallbackQueryHandler(handlers.handle_cleanup_callback, pattern="^cleanup_"))
-        application.add_handler(CallbackQueryHandler(handlers.handle_business_menu_callback, pattern="^menu_"))
+        application.add_handler(CallbackQueryHandler(handle_admin_panel_callback, pattern="^admin_"))
+        application.add_handler(CallbackQueryHandler(handle_cleanup_callback, pattern="^cleanup_"))
+        application.add_handler(CallbackQueryHandler(handle_business_menu_callback, pattern="^menu_"))
 
         logger.info("Registering message handlers...")
         # Обычные сообщения (НЕ команды, НЕ бизнес)
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_message))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
         logger.info("Registering business handlers...")
         # Business connection (подключение/отключение Business аккаунта)
-        application.add_handler(TypeHandler(Update, handlers.handle_business_connection, block=False), group=1)
+        application.add_handler(TypeHandler(Update, handle_business_connection, block=False), group=1)
         # Business messages (сообщения через Business аккаунт)
-        application.add_handler(TypeHandler(Update, handlers.handle_business_message, block=False), group=1)
+        application.add_handler(TypeHandler(Update, handle_business_message, block=False), group=1)
 
         logger.info("Registering admin handlers...")
-        application.add_handler(CommandHandler("stats", handlers.stats_command))
-        application.add_handler(CommandHandler("leads", handlers.leads_command))
+        application.add_handler(CommandHandler("stats", stats_command))
+        application.add_handler(CommandHandler("leads", leads_command))
         
         logger.info("Setting up background jobs...")
         # Запускаем background job для проверки лидов (каждые 2 минуты)
