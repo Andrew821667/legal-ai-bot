@@ -218,7 +218,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Проверяем повторы последних 3-х сообщений
             if len(user_messages) >= 3:
-                last_three = [msg['content'].strip().lower() for msg in user_messages[-3:]]
+                last_three = [msg.get('content', msg.get('message', '')).strip().lower() for msg in user_messages[-3:]]
                 
                 # Если все 3 последних сообщения одинаковые
                 if len(set(last_three)) == 1:
