@@ -336,6 +336,10 @@ MIT License - см. файл [LICENSE](LICENSE)
 - Telegram: @AndrewPopov821667
 - Email: a.popov.gv@gmail.com
 - GitHub: [@Andrew821667](https://github.com/Andrew821667)
+- 
+---
+
+**Update (2025-12-23):** OpenAI API key updated for CI/CD pipeline restoration.
 
 ---
 
