@@ -32,11 +32,14 @@ class Config:
 
         # Настройки AI
         self.AI_MODEL: str = os.getenv('AI_MODEL', 'gpt-4o-mini')
+        self.OPENAI_MODEL: str = self.AI_MODEL  # Для обратной совместимости
         self.MAX_TOKENS: int = int(os.getenv('MAX_TOKENS', '1000'))
         self.TEMPERATURE: float = float(os.getenv('TEMPERATURE', '0.7'))
+        self.MAX_HISTORY_MESSAGES: int = int(os.getenv('MAX_HISTORY_MESSAGES', '10'))
 
         # Настройки базы данных
         self.DB_PATH: str = os.getenv('DB_PATH', 'data/bot.db')
+        self.DATABASE_PATH: str = self.DB_PATH  # Для обратной совместимости
 
         # Настройки логирования
         self.LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')
