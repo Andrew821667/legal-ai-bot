@@ -14,7 +14,7 @@ class Database:
     """Класс для работы с SQLite базой данных"""
 
     def __init__(self, db_path: str = None):
-        self.db_path = db_path or config.DATABASE_PATH
+        self.db_path = db_path or config.DB_PATH
         self.init_database()
 
     def get_connection(self) -> sqlite3.Connection:
