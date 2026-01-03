@@ -55,6 +55,14 @@ class Config:
         self.RATE_LIMIT_REQUESTS: int = int(os.getenv('RATE_LIMIT_REQUESTS', '10'))
         self.RATE_LIMIT_WINDOW: int = int(os.getenv('RATE_LIMIT_WINDOW', '60'))  # секунды
 
+        # Настройки email/SMTP
+        self.SMTP_SERVER: str = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+        self.SMTP_PORT: int = int(os.getenv('SMTP_PORT', '587'))
+        self.SMTP_USER: str = os.getenv('SMTP_USER', '')
+        self.SMTP_PASSWORD: str = os.getenv('SMTP_PASSWORD', '')
+        self.FROM_EMAIL: str = os.getenv('FROM_EMAIL', '')
+        self.FROM_NAME: str = os.getenv('FROM_NAME', 'Legal AI Bot')
+
     def validate(self):
         """Валидация конфигурации"""
         required_fields = [
