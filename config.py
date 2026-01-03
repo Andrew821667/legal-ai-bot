@@ -1,54 +1,77 @@
+#!/usr/bin/env python3
 """
-Конфигурация бота - загрузка переменных окружения
+Конфигурация бота
 """
+
 import os
+from typing import Optional
 from dotenv import load_dotenv
 
-# Загрузка переменных из .env
+# Загружаем переменные окружения
 load_dotenv()
 
-# Обязательные переменные
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-ADMIN_TELEGRAM_ID = int(os.getenv('ADMIN_TELEGRAM_ID', 0))
+class Config:
+    """Класс конфигурации"""
 
-# Опциональный отдельный чат для уведомлений о лидах
-# Если не указан, уведомления отправляются напрямую админу
-LEADS_CHAT_ID = os.getenv('LEADS_CHAT_ID', None)
-if LEADS_CHAT_ID:
-    LEADS_CHAT_ID = int(LEADS_CHAT_ID)
+    def __init__(self):
+        # Telegram Bot Token
+        self.TELEGRAM_BOT_TOKEN: str = os.getenv('TELEGRAM_BOT_TOKEN')
+        if not self.TELEGRAM_BOT_TOKEN:
+            raise ValueError("TELEGRAM_BOT_TOKEN не установлен в переменных окружения")
 
-# OpenAI настройки
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
-MAX_TOKENS = int(os.getenv('MAX_TOKENS', 4000))  # Увеличено до 4000 чтобы не было обрывов фраз
-MAX_COMPLETION_TOKENS = int(os.getenv('MAX_COMPLETION_TOKENS', 16000))  # Лимит ТОЛЬКО на ответ (не включает prompt)
-TEMPERATURE = float(os.getenv('TEMPERATURE', 0.7))
+        # OpenAI API Key
+        self.OPENAI_API_KEY: str = os.getenv('OPENAI_API_KEY')
+        if not self.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY не установлен в переменных окружения")
 
-# База данных
-DATABASE_PATH = os.getenv('DATABASE_PATH', 'data/bot.db')
+        # Admin Telegram ID
+        admin_id = os.getenv('ADMIN_TELEGRAM_ID')
+        if not admin_id:
+            raise ValueError("ADMIN_TELEGRAM_ID не установлен в переменных окружения")
+        self.ADMIN_TELEGRAM_ID: int = int(admin_id)
 
-# Логирование
-LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
-LOG_FILE = os.getenv('LOG_FILE', 'logs/bot.log')
+        # Настройки AI
+        self.AI_MODEL: str = os.getenv('AI_MODEL', 'gpt-4o-mini')
+        self.MAX_TOKENS: int = int(os.getenv('MAX_TOKENS', '1000'))
+        self.TEMPERATURE: float = float(os.getenv('TEMPERATURE', '0.7'))
 
-# Поведение бота
-MAX_HISTORY_MESSAGES = int(os.getenv('MAX_HISTORY_MESSAGES', 15))
-RESPONSE_DELAY = int(os.getenv('RESPONSE_DELAY', 1))
+        # Настройки базы данных
+        self.DB_PATH: str = os.getenv('DB_PATH', 'data/bot.db')
 
-# Email настройки (SMTP)
-SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
-SMTP_PORT = int(os.getenv('SMTP_PORT', 587))
-SMTP_USER = os.getenv('SMTP_USER', '')
-SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', '')
-FROM_EMAIL = os.getenv('FROM_EMAIL', 'a.popov.gv@gmail.com')
-FROM_NAME = os.getenv('FROM_NAME', 'Андрей Попов - Legal AI')
+        # Настройки логирования
+        self.LOG_LEVEL: str = os.getenv('LOG_LEVEL', 'INFO')
+        self.LOG_FILE: str = os.getenv('LOG_FILE', 'logs/bot.log')
 
-# Проверка обязательных переменных
-if not TELEGRAM_BOT_TOKEN:
-    raise ValueError("TELEGRAM_BOT_TOKEN не установлен в .env файле")
+        # Настройки квалификации лидов
+        self.LEAD_QUALIFICATION_THRESHOLD: float = float(os.getenv('LEAD_QUALIFICATION_THRESHOLD', '0.7'))
 
-if not OPENAI_API_KEY:
-    raise ValueError("OPENAI_API_KEY не установлен в .env файле")
+        # Настройки безопасности
+        self.MAX_MESSAGE_LENGTH: int = int(os.getenv('MAX_MESSAGE_LENGTH', '4096'))
+        self.RATE_LIMIT_REQUESTS: int = int(os.getenv('RATE_LIMIT_REQUESTS', '10'))
+        self.RATE_LIMIT_WINDOW: int = int(os.getenv('RATE_LIMIT_WINDOW', '60'))  # секунды
 
-if not ADMIN_TELEGRAM_ID:
-    raise ValueError("ADMIN_TELEGRAM_ID не установлен в .env файле")
+    def validate(self):
+        """Валидация конфигурации"""
+        required_fields = [
+            'TELEGRAM_BOT_TOKEN',
+            'OPENAI_API_KEY',
+            'ADMIN_TELEGRAM_ID'
+        ]
+
+        missing_fields = []
+        for field in required_fields:
+            value = getattr(self, field)
+            if not value:
+                missing_fields.append(field)
+
+        if missing_fields:
+            raise ValueError(f"Отсутствуют обязательные поля: {', '.join(missing_fields)}")
+
+        # Проверка формата токенов
+        if not self.TELEGRAM_BOT_TOKEN.startswith(('bot', '123456:ABC-')):
+            raise ValueError("Неверный формат TELEGRAM_BOT_TOKEN")
+
+        if not self.OPENAI_API_KEY.startswith(('sk-', 'sk-proj-')):
+            raise ValueError("Неверный формат OPENAI_API_KEY")
+
+        return True

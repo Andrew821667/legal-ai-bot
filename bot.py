@@ -1,163 +1,158 @@
 #!/usr/bin/env python3
+"""
+Legal AI Telegram Bot - основной файл запуска
+AI-powered Telegram бот для консультирования клиентов по юридическим AI-решениям
+"""
+
+import asyncio
 import logging
 import sys
-import database
-from handlers import *
-import admin_interface
-from telegram import Update, BotCommand
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
-from telegram.ext import BaseHandler, TypeHandler
-import config
-import asyncio
+from typing import Dict, Any
 
-logging.basicConfig(
-    level=getattr(logging, config.LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler(config.LOG_FILE), logging.StreamHandler()]
+from telegram import Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
 )
+
+from config import Config
+from handlers import Handlers
+from database import Database
+
+# Настройка логирования
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    handlers=[
+        logging.FileHandler("logs/bot.log"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
 logger = logging.getLogger(__name__)
 
-# Функция для настройки кнопок меню бота
-async def setup_bot_commands(application):
-    """Настройка кнопок меню бота (иконка ☰ в строке ввода)"""
-    commands = [
-        BotCommand("start", "Начать работу с ботом"),
-        BotCommand("menu", "Показать меню услуг"),
-        BotCommand("help", "Показать справку"),
-        BotCommand("reset", "Очистить историю диалога"),
-    ]
-    
-    try:
-        await application.bot.set_my_commands(commands)
-        logger.info("✅ Bot menu commands configured successfully")
-    except Exception as e:
-        logger.error(f"❌ Failed to set bot commands: {e}")
+class LegalAIBot:
+    """Основной класс бота"""
 
-# Background job для проверки лидов готовых к уведомлению
-async def check_pending_leads_job(context):
-    """
-    Фоновая задача: проверяет лиды у которых прошло 5+ минут с последнего сообщения
-    и отправляет уведомления админу (новые или обновленные)
-    """
-    try:
-        logger.debug("Checking for pending leads ready for notification...")
-        
-        # Получаем лиды готовые к уведомлению (5 минут без новых сообщений)
-        pending_leads = database.db.get_leads_ready_for_notification(idle_minutes=5)
-        
-        if pending_leads:
-            logger.info(f"Found {len(pending_leads)} leads ready for notification")
-            
-            for lead in pending_leads:
-                try:
-                    # Получаем данные пользователя
-                    user_data = database.db.get_user_by_id(lead['user_id'])
-                    
-                    if not user_data:
-                        logger.warning(f"User {lead['user_id']} not found for lead {lead['id']}")
-                        continue
-                    
-                    # Проверяем - это новый лид или обновление?
-                    is_update = lead.get('notification_sent') == 1  # Если уже было уведомление
-                    
-                    # Формируем lead_data из сохраненных данных
-                    lead_data = {
-                        'name': lead.get('name'),
-                        'email': lead.get('email'),
-                        'phone': lead.get('phone'),
-                        'company': lead.get('company'),
-                        'team_size': lead.get('team_size'),
-                        'contracts_per_month': lead.get('contracts_per_month'),
-                        'pain_point': lead.get('pain_point'),
-                        'budget': lead.get('budget'),
-                        'urgency': lead.get('urgency'),
-                        'industry': lead.get('industry'),
-                        'service_category': lead.get('service_category'),
-                        'specific_need': lead.get('specific_need'),
-                        'temperature': lead.get('temperature'),
-                        'lead_temperature': lead.get('temperature'),  # для совместимости
-                    }
-                    
-                    # Отправляем уведомление админу
-                    await notify_admin_new_lead(context, lead['id'], lead_data, user_data, is_update=is_update)
-                    
-                    action = "ОБНОВЛЕН" if is_update else "НОВЫЙ"
-                    logger.info(f"✅ {action} лид: Notification sent for lead {lead['id']} (user {user_data.get('first_name')})")
-                    
-                except Exception as e:
-                    logger.error(f"Error processing lead {lead.get('id')}: {e}", exc_info=True)
-        
-    except Exception as e:
-        logger.error(f"Error in check_pending_leads_job: {e}", exc_info=True)
+    def __init__(self):
+        self.config = Config()
+        self.database = Database()
+        self.handlers = Handlers(self.database, self.config)
+
+    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /start"""
+        await self.handlers.start_command(update, context)
+
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /help"""
+        await self.handlers.help_command(update, context)
+
+    async def reset_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /reset"""
+        await self.handlers.reset_command(update, context)
+
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик текстовых сообщений (включая бизнес-сообщения)"""
+        # Детальное логирование для отладки
+        logger.info(f"Получен update: type={type(update).__name__}")
+
+        # Определяем, является ли это бизнес-сообщением
+        is_business = hasattr(update, 'business_message') and update.business_message is not None
+        message = update.business_message if is_business else update.message
+
+        if message:
+            logger.info(f"Message from user {message.from_user.id} (bot id: {context.bot.id}): {message.text[:100]}...")
+            logger.info(f"Chat type: {message.chat.type}, Chat id: {message.chat.id}")
+            logger.info(f"Is business message: {is_business}")
+            if is_business and hasattr(update, 'business_connection'):
+                logger.info(f"Business connection ID: {update.business_connection.id if update.business_connection else 'None'}")
+
+            # Проверяем, что сообщение не от самого бота
+            if message.from_user.id == context.bot.id:
+                logger.info(f"Пропускаем сообщение от самого бота: {message.text[:50]}...")
+                return
+
+            # В бизнес-чатах также пропускаем сообщения от бизнес-владельца (чтобы избежать зацикливания)
+            if is_business and str(message.from_user.id) == str(self.config.ADMIN_TELEGRAM_ID):
+                logger.info(f"Пропускаем business-сообщение от бизнес-владельца: {message.text[:50]}...")
+                return
+
+        # Вызываем соответствующий обработчик
+        if is_business:
+            await self.handlers.handle_business_message(update, context)
+        else:
+            await self.handlers.handle_message(update, context)
+
+    async def admin_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Админская команда /stats"""
+        await self.handlers.admin_stats(update, context)
+
+    async def admin_leads(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Админская команда /leads"""
+        await self.handlers.admin_leads(update, context)
+
+    async def admin_export(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Админская команда /export"""
+        await self.handlers.admin_export(update, context)
+
+    async def admin_view_conversation(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Админская команда /view_conversation"""
+        await self.handlers.admin_view_conversation(update, context)
+
+    def setup_handlers(self, application: Application):
+        """Настройка обработчиков команд"""
+
+        # Команды для всех пользователей
+        application.add_handler(CommandHandler("start", self.start_command))
+        application.add_handler(CommandHandler("help", self.help_command))
+        application.add_handler(CommandHandler("reset", self.reset_command))
+
+        # Админские команды
+        application.add_handler(CommandHandler("stats", self.admin_stats))
+        application.add_handler(CommandHandler("leads", self.admin_leads))
+        application.add_handler(CommandHandler("export", self.admin_export))
+        application.add_handler(CommandHandler("view_conversation", self.admin_view_conversation))
+
+        # Обработчик текстовых сообщений (включая бизнес-сообщения)
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            self.handle_message
+        ))
+
+        logger.info("Обработчики настроены")
+
+    async def run(self):
+        """Запуск бота"""
+        try:
+            # Создаем приложение
+            application = Application.builder().token(self.config.TELEGRAM_BOT_TOKEN).build()
+
+            # Настраиваем обработчики
+            self.setup_handlers(application)
+
+            # Запускаем бота
+            logger.info("Бот запущен и готов к работе")
+            await application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+        except Exception as e:
+            logger.error(f"Ошибка при запуске бота: {e}")
+            raise
 
 def main():
+    """Главная функция"""
     try:
-        logger.info("="*50)
-        logger.info("Starting Legal AI Telegram Bot")
-        logger.info(f"Admin ID: {config.ADMIN_TELEGRAM_ID}")
-        logger.info("="*50)
-        
-        logger.info("Initializing database...")
-        database.db = database.Database()
-        database.db.init_database()
-        logger.info("Database initialized successfully")
-        
-        admin_interface.admin_interface = admin_interface.AdminInterface(database.db)
-        
-        logger.info("Creating bot application...")
-        application = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
-        
-        logger.info("Registering user handlers...")
-        application.add_handler(CommandHandler("start", start_command))
-        application.add_handler(CommandHandler("menu", menu_command))
-        application.add_handler(CommandHandler("help", help_command))
-        application.add_handler(CommandHandler("reset", reset_command))
+        # Инициализируем и запускаем бота
+        bot = LegalAIBot()
+        asyncio.run(bot.run())
 
-        logger.info("Registering callback handlers...")
-        application.add_handler(CallbackQueryHandler(handle_admin_panel_callback, pattern="^admin_"))
-        application.add_handler(CallbackQueryHandler(handle_cleanup_callback, pattern="^cleanup_"))
-        application.add_handler(CallbackQueryHandler(handle_business_menu_callback, pattern="^menu_"))
-
-        logger.info("Registering message handlers...")
-        # Обычные сообщения (НЕ команды, НЕ бизнес)
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-        logger.info("Registering business handlers...")
-        # Business connection (подключение/отключение Business аккаунта)
-        application.add_handler(TypeHandler(Update, handle_business_connection, block=False), group=1)
-        # Business messages (сообщения через Business аккаунт)
-        application.add_handler(TypeHandler(Update, handle_business_message, block=False), group=1)
-
-        logger.info("Registering admin handlers...")
-        application.add_handler(CommandHandler("stats", stats_command))
-        application.add_handler(CommandHandler("leads", leads_command))
-        
-        logger.info("Setting up background jobs...")
-        # Запускаем background job для проверки лидов (каждые 2 минуты)
-        job_queue = application.job_queue
-        if job_queue:
-            job_queue.run_repeating(check_pending_leads_job, interval=120, first=60)
-            logger.info("Background job 'check_pending_leads' scheduled (every 2 minutes)")
-        else:
-            logger.warning("⚠️ JobQueue not available. Install via: pip install 'python-telegram-bot[job-queue]'")
-            logger.warning("⚠️ Delayed lead notifications will NOT work without JobQueue")
-        
-        logger.info("All handlers registered successfully")
-        
-        logger.info("Starting bot polling...")
-        logger.info("Bot is ready to receive messages!")
-        logger.info("Press Ctrl+C to stop")
-        
-        # Настраиваем кнопки меню бота после запуска
-        async def post_init(app: Application) -> None:
-            await setup_bot_commands(app)
-        
-        application.post_init = post_init
-        
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
-        
     except KeyboardInterrupt:
-        logger.info("Bot stopped by user (Ctrl+C)")
+        logger.info("Бот остановлен пользователем")
+    except Exception as e:
+        logger.error(f"Критическая ошибка: {e}")
+        sys.exit(1)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
