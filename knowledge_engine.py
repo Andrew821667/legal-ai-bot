@@ -8,7 +8,9 @@ import json
 import numpy as np
 from typing import List, Dict, Optional, Tuple
 from openai import OpenAI
-import config
+from config import Config
+
+config = Config()
 
 logger = logging.getLogger(__name__)
 

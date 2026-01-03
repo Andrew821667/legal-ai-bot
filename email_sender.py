@@ -7,7 +7,8 @@ import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
-import config
+from config import Config
+config = Config()
 
 logger = logging.getLogger(__name__)
 

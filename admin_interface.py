@@ -1,6 +1,7 @@
 import logging
 import database
-import config
+from config import Config
+config = Config()
 
 logger = logging.getLogger(__name__)
 

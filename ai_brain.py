@@ -5,7 +5,8 @@ import logging
 from typing import List, Dict, Optional, AsyncGenerator
 import json
 from openai import OpenAI
-import config
+from config import Config
+config = Config()
 import prompts
 import database
 import knowledge_engine
