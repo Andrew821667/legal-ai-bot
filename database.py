@@ -5,7 +5,8 @@ import sqlite3
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple
-import config
+from config import Config
+config = Config()
 
 logger = logging.getLogger(__name__)
 
