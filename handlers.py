@@ -236,3 +236,108 @@ class Handlers:
     def _is_admin(self, user_id: int) -> bool:
         """Проверка, является ли пользователь админом"""
         return str(user_id) == str(self.config.ADMIN_TELEGRAM_ID)
+    def _is_chat_enabled(self, chat_id: int) -> bool:
+        """Проверка, включен ли чат"""
+        return self.database.is_chat_enabled(chat_id)
+
+    async def enable_chat_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /enable_chat <chat_id>"""
+        if not self._is_admin(update.effective_user.id):
+            await update.message.reply_text("❌ Доступ запрещен")
+            return
+
+        if not context.args:
+            await update.message.reply_text("Использование: /enable_chat <chat_id>")
+            return
+
+        try:
+            chat_id = int(context.args[0])
+            self.database.set_chat_enabled(chat_id, True)
+            await update.message.reply_text(f"✅ Чат {chat_id} включен")
+            logger.info(f"Admin {update.effective_user.id} enabled chat {chat_id}")
+        except ValueError:
+            await update.message.reply_text("Неверный формат ID чата")
+
+    async def disable_chat_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /disable_chat <chat_id>"""
+        if not self._is_admin(update.effective_user.id):
+            await update.message.reply_text("❌ Доступ запрещен")
+            return
+
+        if not context.args:
+            await update.message.reply_text("Использование: /disable_chat <chat_id>")
+            return
+
+        try:
+            chat_id = int(context.args[0])
+            self.database.set_chat_enabled(chat_id, False)
+            await update.message.reply_text(f"🚫 Чат {chat_id} отключен")
+            logger.info(f"Admin {update.effective_user.id} disabled chat {chat_id}")
+        except ValueError:
+            await update.message.reply_text("Неверный формат ID чата")
+
+    async def list_disabled_chats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /disabled_chats"""
+        if not self._is_admin(update.effective_user.id):
+            await update.message.reply_text("❌ Доступ запрещен")
+            return
+
+        disabled_chats = self.database.get_disabled_chats()
+        if disabled_chats:
+            chat_list = "\n".join([f"• {chat_id}" for chat_id in disabled_chats])
+            await update.message.reply_text(f"🚫 Отключенные чаты:\n{chat_list}")
+        else:
+            await update.message.reply_text("✅ Все чаты включены")
+
+    def _is_chat_enabled(self, chat_id: int) -> bool:
+        """Проверка, включен ли чат"""
+        return self.database.is_chat_enabled(chat_id)
+
+    async def enable_chat_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /enable_chat <chat_id>"""
+        if not self._is_admin(update.effective_user.id):
+            await update.message.reply_text("❌ Доступ запрещен")
+            return
+
+        if not context.args:
+            await update.message.reply_text("Использование: /enable_chat <chat_id>")
+            return
+
+        try:
+            chat_id = int(context.args[0])
+            self.database.set_chat_enabled(chat_id, True)
+            await update.message.reply_text(f"✅ Чат {chat_id} включен")
+            logger.info(f"Admin {update.effective_user.id} enabled chat {chat_id}")
+        except ValueError:
+            await update.message.reply_text("Неверный формат ID чата")
+
+    async def disable_chat_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /disable_chat <chat_id>"""
+        if not self._is_admin(update.effective_user.id):
+            await update.message.reply_text("❌ Доступ запрещен")
+            return
+
+        if not context.args:
+            await update.message.reply_text("Использование: /disable_chat <chat_id>")
+            return
+
+        try:
+            chat_id = int(context.args[0])
+            self.database.set_chat_enabled(chat_id, False)
+            await update.message.reply_text(f"🚫 Чат {chat_id} отключен")
+            logger.info(f"Admin {update.effective_user.id} disabled chat {chat_id}")
+        except ValueError:
+            await update.message.reply_text("Неверный формат ID чата")
+
+    async def list_disabled_chats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /disabled_chats"""
+        if not self._is_admin(update.effective_user.id):
+            await update.message.reply_text("❌ Доступ запрещен")
+            return
+
+        disabled_chats = self.database.get_disabled_chats()
+        if disabled_chats:
+            chat_list = "\n".join([f"• {chat_id}" for chat_id in disabled_chats])
+            await update.message.reply_text(f"🚫 Отключенные чаты:\n{chat_list}")
+        else:
+            await update.message.reply_text("✅ Все чаты включены")

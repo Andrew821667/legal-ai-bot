@@ -115,6 +115,10 @@ class LegalAIBot:
         application.add_handler(CommandHandler("leads", self.admin_leads))
         application.add_handler(CommandHandler("export", self.admin_export))
         application.add_handler(CommandHandler("view_conversation", self.admin_view_conversation))
+        # Chat management commands
+        application.add_handler(CommandHandler("enable_chat", self.enable_chat_command))
+        application.add_handler(CommandHandler("disable_chat", self.disable_chat_command))
+        application.add_handler(CommandHandler("disabled_chats", self.list_disabled_chats_command))
 
         # Обработчик текстовых сообщений (включая бизнес-сообщения)
         application.add_handler(MessageHandler(
@@ -156,3 +160,26 @@ def main():
 
 if __name__ == "__main__":
     main()
+    async def enable_chat_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /enable_chat"""
+        await self.handlers.enable_chat_command(update, context)
+
+    async def disable_chat_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /disable_chat"""
+        await self.handlers.disable_chat_command(update, context)
+
+    async def list_disabled_chats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /disabled_chats"""
+        await self.handlers.list_disabled_chats_command(update, context)
+
+    async def enable_chat_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /enable_chat"""
+        await self.handlers.enable_chat_command(update, context)
+
+    async def disable_chat_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /disable_chat"""
+        await self.handlers.disable_chat_command(update, context)
+
+    async def list_disabled_chats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /disabled_chats"""
+        await self.handlers.list_disabled_chats_command(update, context)

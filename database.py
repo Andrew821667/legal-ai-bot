@@ -140,6 +140,17 @@ class Database:
                 logger.info("Added last_message_at column to leads table")
 
             conn.commit()
+            # Миграция: добавляем таблицу для состояний чатов
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chat_states (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER UNIQUE NOT NULL,
+                    is_enabled BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_states_chat_id ON chat_states(chat_id)")
             logger.info("Database initialized successfully")
 
         except Exception as e:
@@ -169,6 +180,17 @@ class Database:
             """, (telegram_id, username, first_name, last_name))
 
             conn.commit()
+            # Миграция: добавляем таблицу для состояний чатов
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chat_states (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER UNIQUE NOT NULL,
+                    is_enabled BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_states_chat_id ON chat_states(chat_id)")
 
             cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (telegram_id,))
             user_id = cursor.fetchone()[0]
@@ -229,6 +251,17 @@ class Database:
             """, (user_id, role, message))
 
             conn.commit()
+            # Миграция: добавляем таблицу для состояний чатов
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chat_states (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER UNIQUE NOT NULL,
+                    is_enabled BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_states_chat_id ON chat_states(chat_id)")
             logger.debug(f"Message added for user {user_id}, role {role}")
 
         except Exception as e:
@@ -269,6 +302,17 @@ class Database:
         try:
             cursor.execute("DELETE FROM conversations WHERE user_id = ?", (user_id,))
             conn.commit()
+            # Миграция: добавляем таблицу для состояний чатов
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chat_states (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER UNIQUE NOT NULL,
+                    is_enabled BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_states_chat_id ON chat_states(chat_id)")
             logger.info(f"Conversation history cleared for user {user_id}")
 
         except Exception as e:
@@ -335,6 +379,17 @@ class Database:
                 logger.info(f"Lead {lead_id} created for user {user_id}")
 
             conn.commit()
+            # Миграция: добавляем таблицу для состояний чатов
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chat_states (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER UNIQUE NOT NULL,
+                    is_enabled BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_states_chat_id ON chat_states(chat_id)")
             return lead_id
 
         except Exception as e:
@@ -373,6 +428,17 @@ class Database:
             """, (lead_id,))
 
             conn.commit()
+            # Миграция: добавляем таблицу для состояний чатов
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chat_states (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER UNIQUE NOT NULL,
+                    is_enabled BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_states_chat_id ON chat_states(chat_id)")
             logger.info(f"Lead {lead_id} marked as notification sent")
 
         except Exception as e:
@@ -479,6 +545,17 @@ class Database:
             """, (user_id,))
             
             conn.commit()
+            # Миграция: добавляем таблицу для состояний чатов
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chat_states (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER UNIQUE NOT NULL,
+                    is_enabled BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_states_chat_id ON chat_states(chat_id)")
             logger.debug(f"Updated last_message_at for user {user_id}")
             
         except Exception as e:
@@ -635,6 +712,17 @@ class Database:
             """, (lead_id, notification_type, message))
 
             conn.commit()
+            # Миграция: добавляем таблицу для состояний чатов
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chat_states (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER UNIQUE NOT NULL,
+                    is_enabled BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_states_chat_id ON chat_states(chat_id)")
             notification_id = cursor.lastrowid
 
             logger.info(f"Notification {notification_id} created for lead {lead_id}")
@@ -723,3 +811,120 @@ if __name__ == '__main__':
     print("Initializing database...")
     db = Database()
     print("Database initialized successfully!")
+
+    # === CHAT STATES ===
+
+    def is_chat_enabled(self, chat_id: int) -> bool:
+        """Проверка, включен ли чат"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT is_enabled FROM chat_states WHERE chat_id = ?", (chat_id,))
+            row = cursor.fetchone()
+            
+            # Если записи нет, считаем чат включенным (по умолчанию)
+            return row[0] if row else True
+            
+        finally:
+            conn.close()
+
+    def set_chat_enabled(self, chat_id: int, enabled: bool):
+        """Включение/отключение чата"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                INSERT INTO chat_states (chat_id, is_enabled, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    is_enabled = excluded.is_enabled,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (chat_id, enabled))
+            
+            conn.commit()
+            # Миграция: добавляем таблицу для состояний чатов
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chat_states (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER UNIQUE NOT NULL,
+                    is_enabled BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_states_chat_id ON chat_states(chat_id)")
+            logger.info(f"Chat {chat_id} {'enabled' if enabled else 'disabled'}")
+            
+        except Exception as e:
+            logger.error(f"Error setting chat enabled state: {e}")
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def get_disabled_chats(self) -> list:
+        """Получение списка отключенных чатов"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT chat_id FROM chat_states WHERE is_enabled = 0")
+            return [row[0] for row in cursor.fetchall()]
+            
+        finally:
+            conn.close()
+
+    # === CHAT STATES ===
+
+    def is_chat_enabled(self, chat_id: int) -> bool:
+        """Проверка, включен ли чат"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT is_enabled FROM chat_states WHERE chat_id = ?", (chat_id,))
+            row = cursor.fetchone()
+            
+            # Если записи нет, считаем чат включенным (по умолчанию)
+            return row[0] if row else True
+            
+        finally:
+            conn.close()
+
+    def set_chat_enabled(self, chat_id: int, enabled: bool):
+        """Включение/отключение чата"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                INSERT INTO chat_states (chat_id, is_enabled, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    is_enabled = excluded.is_enabled,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (chat_id, enabled))
+            
+            conn.commit()
+            logger.info(f"Chat {chat_id} {'enabled' if enabled else 'disabled'}")
+            
+        except Exception as e:
+            logger.error(f"Error setting chat enabled state: {e}")
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def get_disabled_chats(self) -> list:
+        """Получение списка отключенных чатов"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT chat_id FROM chat_states WHERE is_enabled = 0")
+            return [row[0] for row in cursor.fetchall()]
+            
+        finally:
+            conn.close()
