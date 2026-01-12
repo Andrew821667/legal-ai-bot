@@ -341,3 +341,58 @@ class Handlers:
             await update.message.reply_text(f"🚫 Отключенные чаты:\n{chat_list}")
         else:
             await update.message.reply_text("✅ Все чаты включены")
+
+    async def handle_business_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик бизнес-сообщений (Telegram Business Messages)"""
+        try:
+            user = update.business_message.from_user
+            message = update.business_message
+            chat_id = update.business_message.chat.id
+            business_connection_id = update.business_connection.id if update.business_connection else None
+
+            logger.info(f"Обработка business-сообщения от пользователя {user.id} в чате {chat_id}")
+
+            # Проверяем, включен ли чат
+            if not self._is_chat_enabled(chat_id):
+                logger.info(f"Пропускаем business-сообщение из отключенного чата: {chat_id}")
+                return
+
+            # Сохраняем пользователя
+            self.database.save_user(user.id, user.username, user.first_name, user.last_name)
+
+            # Сохраняем сообщение пользователя
+            self.database.save_message(user.id, chat_id, message.text, 'user')
+
+            # Получаем историю диалога для контекста
+            conversation_history = self.database.get_conversation_history(user.id, chat_id, limit=10)
+
+            # Генерируем ответ через AI
+            ai_response = await self.ai_brain.generate_response(message.text, conversation_history)
+
+            # Сохраняем ответ AI
+            self.database.save_message(user.id, chat_id, ai_response, 'assistant')
+
+            # Отправляем ответ через бизнес-соединение
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=ai_response,
+                business_connection_id=business_connection_id
+            )
+
+            # Квалифицируем лида в фоне
+            await self.lead_qualifier.qualify_lead_async(user.id, chat_id, message.text, ai_response)
+
+            logger.info(f"Обработано business-сообщение от пользователя {user.id}")
+
+        except Exception as e:
+            logger.error(f"Ошибка в handle_business_message: {e}")
+            # В бизнес-чатах нужно отправлять ответ через business_connection_id
+            try:
+                business_connection_id = update.business_connection.id if update.business_connection else None
+                await context.bot.send_message(
+                    chat_id=update.business_message.chat.id,
+                    text="Извините, произошла техническая ошибка. Попробуйте переформулировать вопрос.",
+                    business_connection_id=business_connection_id
+                )
+            except Exception as send_error:
+                logger.error(f"Ошибка отправки сообщения об ошибке: {send_error}")

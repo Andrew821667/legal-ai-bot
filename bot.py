@@ -75,6 +75,11 @@ class LegalAIBot:
                 logger.info(f"Пропускаем сообщение из отключенного чата: {update.effective_chat.id}")
                 return
 
+            # Проверяем, включен ли чат
+            if not self.handlers._is_chat_enabled(update.effective_chat.id):
+                logger.info(f"Пропускаем сообщение из отключенного чата: {update.effective_chat.id}")
+                return
+
             # Проверяем, что сообщение не от самого бота
             if message.from_user.id == context.bot.id:
                 logger.info(f"Пропускаем сообщение от самого бота: {message.text[:50]}...")
