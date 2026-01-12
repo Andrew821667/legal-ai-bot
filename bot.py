@@ -70,6 +70,11 @@ class LegalAIBot:
             if is_business and hasattr(update, 'business_connection'):
                 logger.info(f"Business connection ID: {update.business_connection.id if update.business_connection else 'None'}")
 
+            # Проверяем, включен ли чат
+            if not self.handlers._is_chat_enabled(update.effective_chat.id):
+                logger.info(f"Пропускаем сообщение из отключенного чата: {update.effective_chat.id}")
+                return
+
             # Проверяем, что сообщение не от самого бота
             if message.from_user.id == context.bot.id:
                 logger.info(f"Пропускаем сообщение от самого бота: {message.text[:50]}...")
@@ -183,3 +188,23 @@ if __name__ == "__main__":
     async def list_disabled_chats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /disabled_chats"""
         await self.handlers.list_disabled_chats_command(update, context)
+
+    async def list_disabled_chats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /disabled_chats"""
+        await self.handlers.list_disabled_chats_command(update, context)
+
+def main():
+    """Главная функция"""
+    try:
+        # Инициализируем и запускаем бота
+        bot = LegalAIBot()
+        asyncio.run(bot.run())
+
+    except KeyboardInterrupt:
+        logger.info("Бот остановлен пользователем")
+    except Exception as e:
+        logger.error(f"Критическая ошибка: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
